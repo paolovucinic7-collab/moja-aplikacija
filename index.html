@@ -8,6 +8,10 @@
 <meta name="theme-color" content="#0a0a0a">
 <title>GymLog</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 :root {
@@ -41,6 +45,22 @@ body { height: 100%; background: var(--bg); color: var(--text); font-family: var
 .app { position: fixed; inset: 0; max-width: 430px; margin: 0 auto; display: flex; flex-direction: column; }
 
 /* TOPBAR */
+/* LOGIN */
+.login-overlay { position:fixed; inset:0; background:var(--bg); z-index:300; display:flex; align-items:center; justify-content:center; padding:32px 24px; }
+.login-overlay.hidden { display:none; }
+.login-card { width:100%; max-width:340px; }
+.login-logo { font-family:var(--mono); font-size:20px; font-weight:500; letter-spacing:0.22em; color:var(--text); text-align:center; margin-bottom:4px; }
+.login-sub { font-family:var(--mono); font-size:9px; color:var(--text3); letter-spacing:0.09em; text-transform:uppercase; text-align:center; margin-bottom:32px; }
+.login-toggle-btn { width:100%; background:none; border:none; font-family:var(--mono); font-size:9px; color:var(--text3); cursor:pointer; letter-spacing:0.05em; padding:14px 0 0; text-align:center; transition:color 0.15s; }
+.login-toggle-btn:hover { color:var(--text2); }
+.auth-err { font-family:var(--mono); font-size:10px; color:var(--red); text-align:center; margin-top:10px; min-height:14px; letter-spacing:0.03em; }
+.login-spinner { text-align:center; font-family:var(--mono); font-size:10px; color:var(--text3); letter-spacing:0.08em; padding:8px 0; }
+.cloud-badge { display:flex; align-items:center; gap:6px; justify-content:center; font-family:var(--mono); font-size:9px; color:var(--green); letter-spacing:0.06em; margin-left:4px; }
+.cloud-dot { width:5px; height:5px; border-radius:50%; background:var(--green); animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+.profile-logout-btn { width:100%; padding:12px 0; background:none; border:none; font-family:var(--mono); font-size:9px; color:var(--text3); cursor:pointer; letter-spacing:0.08em; text-transform:uppercase; text-align:left; transition:color 0.15s; }
+.profile-logout-btn:hover { color:var(--red); }
+
 /* PROFILE */
 .profile-item { display:flex; align-items:center; gap:14px; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer; transition:opacity 0.15s; }
 .profile-item:last-child { border-bottom:none; }
@@ -372,6 +392,25 @@ body { height: 100%; background: var(--bg); color: var(--text); font-family: var
   </div>
 </div>
 
+<!-- LOGIN OVERLAY -->
+<div id="loginOverlay" class="login-overlay">
+  <div class="login-card">
+    <div class="login-logo">GYMLOG</div>
+    <div class="login-sub" id="loginSubtitle">Prijava · Cloud baza</div>
+    <div class="form-group">
+      <label class="form-lbl">Email</label>
+      <input class="form-inp" id="authEmail" type="email" placeholder="tvoj@email.com" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label class="form-lbl">Lozinka</label>
+      <input class="form-inp" id="authPw" type="password" placeholder="Lozinka" autocomplete="current-password">
+    </div>
+    <button class="pri-btn" id="loginBtn" onclick="doAuth()">Prijavi se</button>
+    <button class="login-toggle-btn" id="loginToggle" onclick="toggleAuthMode()">Nemaš račun? Registriraj se →</button>
+    <div id="authErr" class="auth-err"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -397,6 +436,147 @@ const DEFAULT_EX = {
     {id:'shpress',name:'Shoulder rotacijski press (14kg)',format:'dual',sets:2},
   ]
 };
+
+// ── FIREBASE ─────────────────────────────────────────────────────────────
+const FB_CONFIG = {
+  apiKey: "REPLACE_API_KEY",
+  authDomain: "REPLACE_AUTH_DOMAIN",
+  projectId: "REPLACE_PROJECT_ID",
+  storageBucket: "REPLACE_STORAGE_BUCKET",
+  messagingSenderId: "REPLACE_SENDER_ID",
+  appId: "REPLACE_APP_ID"
+};
+
+let fsAuth = null, fs = null, fbReady = false;
+try {
+  firebase.initializeApp(FB_CONFIG);
+  fsAuth = firebase.auth();
+  fs     = firebase.firestore();
+  fs.enablePersistence({ synchronizeTabs: true }).catch(()=>{});
+  fbReady = true;
+} catch(e) { console.warn('Firebase init failed', e); }
+
+let authMode = 'login';
+function toggleAuthMode(){
+  authMode = authMode === 'login' ? 'register' : 'login';
+  const isLogin = authMode === 'login';
+  document.getElementById('loginBtn').textContent      = isLogin ? 'Prijavi se' : 'Registriraj se';
+  document.getElementById('loginToggle').textContent   = isLogin ? 'Nemaš račun? Registriraj se →' : 'Imaš račun? Prijavi se →';
+  document.getElementById('loginSubtitle').textContent = isLogin ? 'Prijava · Cloud baza' : 'Novi račun · Cloud baza';
+  document.getElementById('authErr').textContent = '';
+}
+
+async function doAuth(){
+  const email = document.getElementById('authEmail').value.trim();
+  const pw    = document.getElementById('authPw').value;
+  const errEl = document.getElementById('authErr');
+  if(!email||!pw){ errEl.textContent='Upiši email i lozinku'; return; }
+  document.getElementById('loginBtn').textContent = '...';
+  errEl.textContent = '';
+  try {
+    if(authMode==='login') await fsAuth.signInWithEmailAndPassword(email, pw);
+    else                   await fsAuth.createUserWithEmailAndPassword(email, pw);
+  } catch(e){
+    const M = {
+      'auth/user-not-found':'Email nije pronađen',
+      'auth/wrong-password':'Pogrešna lozinka',
+      'auth/invalid-credential':'Pogrešan email ili lozinka',
+      'auth/email-already-in-use':'Email već postoji',
+      'auth/invalid-email':'Neispravan email format',
+      'auth/weak-password':'Lozinka premala (min. 6 znakova)',
+    };
+    errEl.textContent = M[e.code] || ('Greška: '+e.message);
+    document.getElementById('loginBtn').textContent = authMode==='login' ? 'Prijavi se' : 'Registriraj se';
+  }
+}
+
+document.addEventListener('keydown', e=>{
+  if(e.key==='Enter' && !document.getElementById('loginOverlay').classList.contains('hidden')) doAuth();
+});
+
+async function doLogout(){
+  if(fsAuth) await fsAuth.signOut();
+  document.getElementById('loginOverlay').classList.remove('hidden');
+  document.getElementById('loginBtn').textContent = 'Prijavi se';
+}
+
+// ── CLOUD SYNC ────────────────────────────────────────────────────────────
+function cloudSave(){
+  if(!fbReady || !fsAuth?.currentUser) return;
+  const uid = fsAuth.currentUser.uid, pid = currentProfileId;
+  Promise.all([
+    fs.doc(`users/${uid}/workouts/${pid}`).set(db),
+    fs.doc(`users/${uid}/config/${pid}`).set(cfg),
+    fs.doc(`users/${uid}/bw/${pid}`).set(bwDB),
+    fs.doc(`users/${uid}/meta/profiles`).set({ list: getProfiles() }),
+  ]).catch(e => console.log('cloud save err', e));
+}
+
+async function cloudLoadAll(){
+  if(!fbReady || !fsAuth?.currentUser) return;
+  const uid = fsAuth.currentUser.uid;
+  try {
+    const profDoc = await fs.doc(`users/${uid}/meta/profiles`).get();
+    if(!profDoc.exists){
+      // First login ever — upload local data to cloud
+      await cloudUploadLocal(uid); return;
+    }
+    const cloudProfiles = profDoc.data().list || [];
+    if(cloudProfiles.length > 0){
+      saveProfileList(cloudProfiles);
+      let pid = getCurrentId();
+      if(!getProfiles().find(p=>p.id===pid)){ pid=getProfiles()[0].id; setCurrentId(pid); currentProfileId=pid; }
+    }
+    await cloudLoadProfile(currentProfileId, uid);
+  } catch(e){ console.log('cloud load err', e); }
+}
+
+async function cloudLoadProfile(pid, uid){
+  uid = uid || fsAuth?.currentUser?.uid;
+  if(!uid) return;
+  try {
+    const [wD,cD,bD] = await Promise.all([
+      fs.doc(`users/${uid}/workouts/${pid}`).get(),
+      fs.doc(`users/${uid}/config/${pid}`).get(),
+      fs.doc(`users/${uid}/bw/${pid}`).get(),
+    ]);
+    if(wD.exists){ db   = wD.data(); localStorage.setItem(dbKey(),  JSON.stringify(db)); }
+    if(cD.exists){ cfg  = cD.data(); localStorage.setItem(cfgKey(), JSON.stringify(cfg)); }
+    if(bD.exists){ bwDB = bD.data(); localStorage.setItem(bwKey(),  JSON.stringify(bwDB)); }
+  } catch(e){ console.log('cloud load profile err', e); }
+}
+
+async function cloudUploadLocal(uid){
+  // First-time sync: push all local data to cloud
+  const profiles = getProfiles();
+  await fs.doc(`users/${uid}/meta/profiles`).set({ list: profiles });
+  for(const p of profiles){
+    const pDb  = JSON.parse(localStorage.getItem('gl_db_'+p.id)  || '{}');
+    const pCfg = JSON.parse(localStorage.getItem('gl_cfg_'+p.id) || '{}');
+    const pBw  = JSON.parse(localStorage.getItem('gl_bw_'+p.id)  || '{}');
+    await Promise.all([
+      fs.doc(`users/${uid}/workouts/${p.id}`).set(pDb),
+      fs.doc(`users/${uid}/config/${p.id}`).set(pCfg),
+      fs.doc(`users/${uid}/bw/${p.id}`).set(pBw),
+    ]);
+  }
+}
+
+// Show login overlay until auth confirmed
+if(fbReady){
+  fsAuth.onAuthStateChanged(async user => {
+    if(user){
+      document.getElementById('loginOverlay').classList.add('hidden');
+      await cloudLoadAll();
+      initApp();
+    } else {
+      document.getElementById('loginOverlay').classList.remove('hidden');
+    }
+  });
+} else {
+  // Firebase not configured yet — run offline
+  document.getElementById('loginOverlay').classList.add('hidden');
+}
 
 // ── PROFILE SYSTEM ────────────────────────────────────────────────────────
 const PK = 'gl_profiles_v2';
@@ -484,9 +664,9 @@ function loadProfileData(){
 }
 loadProfileData();
 
-function sDB(){  try{ localStorage.setItem(dbKey(),  JSON.stringify(db)); } catch(e){ showToast('Greška: nema mjesta u memoriji'); } }
-function sCfg(){ try{ localStorage.setItem(cfgKey(), JSON.stringify(cfg)); } catch(e){} }
-function sBW(){  try{ localStorage.setItem(bwKey(),  JSON.stringify(bwDB)); } catch(e){} }
+function sDB(){  try{ localStorage.setItem(dbKey(),  JSON.stringify(db)); } catch(e){ showToast('Greška: nema mjesta'); } setTimeout(cloudSave,0); }
+function sCfg(){ try{ localStorage.setItem(cfgKey(), JSON.stringify(cfg)); } catch(e){} setTimeout(cloudSave,0); }
+function sBW(){  try{ localStorage.setItem(bwKey(),  JSON.stringify(bwDB)); } catch(e){} setTimeout(cloudSave,0); }
 
 // ── PROFILE SHEET ─────────────────────────────────────────────────────────
 let profileMode = 'list';
@@ -517,6 +697,11 @@ function renderProfileSheet(){
       </div>`;
     });
     h += `<button class="profile-create-btn" onclick="profileMode='create';renderProfileSheet()">+ Novi profil</button>`;
+    if(fbReady && fsAuth?.currentUser){
+      const email = fsAuth.currentUser.email;
+      h += `<div class="sheet-divider"></div><div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:0.05em;margin-bottom:8px">Prijavljen: ${email}</div>`;
+      h += `<button class="profile-logout-btn" onclick="doLogout()">← Odjava</button>`;
+    }
     el.innerHTML = h;
 
   } else if(profileMode === 'create'){
@@ -567,6 +752,8 @@ function createNewProfile(){
   const list = getProfiles();
   list.push(newP);
   saveProfileList(list);
+  if(fbReady && fsAuth?.currentUser)
+    fs.doc(`users/${fsAuth.currentUser.uid}/meta/profiles`).set({ list }).catch(()=>{});
   switchProfileTo(newP.id);
   showToast('Profil kreiran ✓');
 }
@@ -583,21 +770,31 @@ function confirmDeleteProfile(){
   const p = list.find(x => x.id === profileToDelete);
   if(!p){ showToast('Profil nije pronađen'); return; }
   if(p.pw !== pw){ showToast('Pogrešna šifra ✕'); return; }
-  // Delete all data
+  // Delete all data locally
   ['gl_db_','gl_cfg_','gl_bw_'].forEach(prefix => localStorage.removeItem(prefix + profileToDelete));
   const newList = list.filter(x => x.id !== profileToDelete);
   saveProfileList(newList);
+  // Delete from cloud
+  if(fbReady && fsAuth?.currentUser){
+    const uid = fsAuth.currentUser.uid, pid = profileToDelete;
+    Promise.all([
+      fs.doc(`users/${uid}/workouts/${pid}`).delete(),
+      fs.doc(`users/${uid}/config/${pid}`).delete(),
+      fs.doc(`users/${uid}/bw/${pid}`).delete(),
+      fs.doc(`users/${uid}/meta/profiles`).set({ list: newList }),
+    ]).catch(()=>{});
+  }
   // Switch to first remaining
   if(newList.length > 0) switchProfileTo(newList[0].id);
   closeSheet('profileSheet');
   showToast('Profil obrisan');
 }
 
-function switchProfileTo(id){
+async function switchProfileTo(id){
   if(id === currentProfileId){ closeSheet('profileSheet'); return; }
   currentProfileId = id;
   setCurrentId(id);
-  loadProfileData();
+  loadProfileData(); // instant from localStorage
   const p = getProfiles().find(x => x.id === id);
   document.getElementById('profileBtn').textContent = p?.initials || '??';
   closeSheet('profileSheet');
@@ -605,6 +802,12 @@ function switchProfileTo(id){
   renderCal(); renderWeekStrip(); renderExercises(); updateBWPill();
   if(document.getElementById('vStats').style.display !== 'none') renderStats();
   showToast('Profil: ' + (p?.name||id) + ' ✓');
+  // Refresh from cloud in background
+  if(fbReady && fsAuth?.currentUser){
+    await cloudLoadProfile(id);
+    renderCal(); renderWeekStrip(); renderExercises(); updateBWPill();
+    if(document.getElementById('vStats').style.display !== 'none') renderStats();
+  }
 }
 function dkey(d){ return d.toISOString().split('T')[0]; }
 function todayDK(){ return dkey(new Date()); }
@@ -622,14 +825,16 @@ document.addEventListener('input', function(e){
 });
 
 // ── INIT ─────────────────────────────────────────────────────────────────
-(function(){
+function initApp(){
   const p = getProfiles().find(x => x.id === currentProfileId);
   document.getElementById('profileBtn').textContent = p?.initials || '??';
   const n = new Date();
   calY = n.getFullYear(); calM = n.getMonth();
   selDate = n;
   renderCal(); renderWeekStrip(); renderExercises(); updateBWPill();
-})();
+}
+// Firebase onAuthStateChanged calls initApp. If Firebase not configured, call now.
+if(!fbReady) initApp();
 
 // ── CALENDAR ─────────────────────────────────────────────────────────────
 function renderCal(){
