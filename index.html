@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0a">
+<title>GymLog</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root {
+  --bg: #0a0a0a;
+  --bg2: #141414;
+  --bg3: #1c1c1c;
+  --bg4: #242424;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.13);
+  --text: #efefef;
+  --text2: #888;
+  --text3: #444;
+  --accent: #efefef;
+  --green: #4ade80;
+  --green-bg: rgba(74,222,128,0.1);
+  --red: #f87171;
+  --red-bg: rgba(248,113,113,0.1);
+  --mono: 'DM Mono', monospace;
+  --sans: 'DM Sans', sans-serif;
+  --r: 10px;
+  --r2: 14px;
+  --r3: 20px;
+  --nav-h: 60px;
+  --top-h: 52px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html { height: 100%; }
+body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); overflow: hidden; }
+
+/* ── LAYOUT: fixed header + scrollable body + fixed nav ── */
+.app { position: fixed; inset: 0; max-width: 430px; margin: 0 auto; display: flex; flex-direction: column; }
+
+/* TOPBAR */
+.topbar { height: var(--top-h); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-bottom: 1px solid var(--border); background: var(--bg); z-index: 10; }
+.logo { font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.15em; color: var(--text2); }
+.topbar-actions { display: flex; align-items: center; gap: 8px; }
+.icon-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: none; color: var(--text2); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 15px; transition: all 0.15s; }
+.icon-btn:hover { border-color: var(--border2); background: var(--bg3); }
+.icon-btn.active-icon { border-color: var(--border2); color: var(--text); }
+
+/* VIEWS — each fills remaining space */
+.view { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 16px); }
+.view::-webkit-scrollbar { display: none; }
+
+/* CALENDAR */
+.cal-wrap { padding: 14px 18px 8px; }
+.cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.cal-month-label { font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text2); }
+.cal-nav { background: none; border: 1px solid var(--border); color: var(--text3); border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+.cal-nav:hover { border-color: var(--border2); color: var(--text2); }
+.cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 2px; }
+.dow { font-family: var(--mono); font-size: 9px; color: var(--text3); text-align: center; padding: 2px 0 5px; }
+.cday { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 11px; color: var(--text3); cursor: pointer; border-radius: 7px; position: relative; transition: all 0.12s; user-select: none; }
+.cday:active { transform: scale(0.88); }
+.cday.in-month { color: var(--text2); }
+.cday.today { color: var(--text); }
+.cday.today::before { content:''; position:absolute; bottom:3px; left:50%; transform:translateX(-50%); width:3px; height:3px; border-radius:50%; background:var(--text3); }
+.cday.selected { background: var(--text); color: var(--bg) !important; font-weight: 500; }
+.cday.selected::before { display: none; }
+.cday.has-data::after { content:''; position:absolute; bottom:3px; left:50%; transform:translateX(-50%); width:3px; height:3px; border-radius:50%; background:var(--green); }
+.cday.selected.has-data::after { background:rgba(0,0,0,0.4); }
+
+/* WEEK STRIP */
+.week-strip-wrap { padding: 6px 18px 10px; }
+.week-meta { font-family: var(--mono); font-size: 9px; color: var(--text3); letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 7px; }
+.week-strip { display: flex; gap: 3px; }
+.wpill { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px 5px; border: 1px solid var(--border); border-radius: var(--r); cursor: pointer; transition: all 0.12s; user-select: none; }
+.wpill:active { transform: scale(0.92); }
+.wpill.active { background: var(--text); border-color: var(--text); }
+.wpill.has-data { border-color: rgba(74,222,128,0.2); }
+.wpill-dow { font-family: var(--mono); font-size: 8px; color: var(--text3); }
+.wpill-num { font-family: var(--mono); font-size: 12px; color: var(--text2); }
+.wpill.has-data .wpill-num { color: var(--text); }
+.wpill.active .wpill-dow, .wpill.active .wpill-num { color: var(--bg); }
+.wpill-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--green); opacity: 0; }
+.wpill.has-data .wpill-dot { opacity: 1; }
+.wpill.active .wpill-dot { background: rgba(0,0,0,0.3); }
+
+/* SECTION HEADER */
+.sec-hd { display: flex; align-items: center; justify-content: space-between; padding: 10px 18px 8px; }
+.sec-hd-left { display: flex; flex-direction: column; gap: 1px; }
+.sec-hd-day { font-size: 14px; font-weight: 500; color: var(--text); }
+.sec-hd-date { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+.body-weight-pill { display: flex; align-items: center; gap: 6px; background: var(--bg3); border: 1px solid var(--border); border-radius: 20px; padding: 5px 10px 5px 8px; cursor: pointer; transition: all 0.15s; }
+.body-weight-pill:hover { border-color: var(--border2); }
+.bw-label { font-family: var(--mono); font-size: 9px; color: var(--text3); letter-spacing: 0.05em; }
+.bw-val { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--text2); }
+.bw-val.set { color: var(--text); }
+
+/* EXERCISE CARDS */
+.ex-list { padding: 0 18px 4px; }
+.ex-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2); margin-bottom: 8px; overflow: hidden; }
+.ex-card-header { display: flex; align-items: center; justify-content: space-between; padding: 11px 13px 0; }
+.ex-card-name { font-size: 13px; font-weight: 400; color: var(--text); line-height: 1.3; flex: 1; }
+.tag { font-family: var(--mono); font-size: 8px; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.05em; flex-shrink: 0; margin-left: 8px; }
+.tag-ss { border: 1px solid rgba(251,191,36,0.25); color: rgba(251,191,36,0.6); }
+.tag-cardio { border: 1px solid rgba(74,222,128,0.25); color: rgba(74,222,128,0.6); }
+.tag-iso { border: 1px solid rgba(167,139,250,0.25); color: rgba(167,139,250,0.6); }
+.ex-note { font-family: var(--mono); font-size: 9px; color: var(--text3); padding: 4px 13px 0; letter-spacing: 0.03em; }
+
+.ex-body { padding: 9px 13px 12px; }
+.set-row { display: grid; align-items: center; gap: 4px; margin-bottom: 4px; }
+.set-row:last-child { margin-bottom: 0; }
+.set-row.r { grid-template-columns: 22px 1fr 1fr 1fr; }
+.set-row.t { grid-template-columns: 22px 1fr 1fr 20px; }
+.set-row.d { grid-template-columns: 22px 1fr 1fr 1fr; }
+.set-row.hd { margin-bottom: 5px; }
+.slbl { font-family: var(--mono); font-size: 9px; color: var(--text3); }
+.col-hd { font-family: var(--mono); font-size: 8px; color: var(--text3); text-align: center; letter-spacing: 0.04em; }
+.inp { width: 100%; padding: 7px 4px; background: var(--bg3); border: 1px solid var(--border); border-radius: 7px; font-family: var(--mono); font-size: 12px; color: var(--text); text-align: center; -moz-appearance: textfield; transition: border-color 0.12s; }
+.inp::-webkit-inner-spin-button, .inp::-webkit-outer-spin-button { -webkit-appearance: none; }
+.inp:focus { outline: none; border-color: var(--border2); background: var(--bg4); }
+.inp.purple { color: rgba(167,139,250,0.85); }
+.inp.sm { font-size: 10px; text-align: left; padding-left: 7px; }
+
+.ss-sep { display: flex; align-items: center; gap: 8px; padding: 6px 13px; }
+.ss-line { flex:1; height:1px; background:var(--border); }
+.ss-txt { font-family:var(--mono); font-size:8px; color:var(--text3); letter-spacing:0.06em; }
+
+/* VIJACA */
+.vijaca-rounds { display: flex; gap: 6px; padding: 9px 13px 12px; }
+.vdot { flex: 1; height: 36px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg3); cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 11px; color: var(--text3); transition: all 0.15s; user-select: none; }
+.vdot:active { transform: scale(0.88); }
+.vdot.done { background: var(--green-bg); border-color: rgba(74,222,128,0.35); color: var(--green); }
+
+/* SAVE BTN */
+.save-wrap { padding: 8px 18px 4px; }
+.save-btn { width: 100%; padding: 13px; background: var(--text); color: var(--bg); border: none; border-radius: var(--r2); font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.1em; cursor: pointer; text-transform: uppercase; transition: opacity 0.15s; }
+.save-btn:active { opacity: 0.75; transform: scale(0.99); }
+
+/* EMPTY STATE */
+.empty-state { padding: 48px 18px 24px; text-align: center; }
+.empty-icon { font-size: 28px; margin-bottom: 12px; opacity: 0.3; }
+.empty-title { font-family: var(--mono); font-size: 11px; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+.empty-sub { font-size: 13px; color: var(--text3); line-height: 1.6; margin-bottom: 20px; }
+.ghost-btn { padding: 10px 20px; border: 1px solid var(--border2); border-radius: var(--r); font-family: var(--mono); font-size: 10px; color: var(--text2); background: none; cursor: pointer; letter-spacing: 0.07em; text-transform: uppercase; transition: all 0.15s; }
+.ghost-btn:hover { background: var(--bg3); }
+
+/* STATS */
+.stats-wrap { padding: 16px 18px; }
+.stats-seg { display: flex; gap: 4px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); padding: 3px; margin-bottom: 16px; }
+.seg-btn { flex: 1; padding: 7px 6px; border-radius: 7px; border: none; background: none; font-family: var(--mono); font-size: 9px; color: var(--text3); cursor: pointer; letter-spacing: 0.06em; text-transform: uppercase; transition: all 0.15s; }
+.seg-btn.active { background: var(--bg4); color: var(--text); }
+.metric-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.metric { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2); padding: 13px; }
+.metric-val { font-family: var(--mono); font-size: 20px; font-weight: 500; color: var(--text); line-height: 1; }
+.metric-unit { font-size: 11px; color: var(--text3); font-weight: 400; }
+.metric-lbl { font-family: var(--mono); font-size: 9px; color: var(--text3); margin-top: 5px; letter-spacing: 0.04em; text-transform: uppercase; }
+.metric-delta { font-family: var(--mono); font-size: 9px; margin-top: 4px; }
+.up { color: var(--green); }
+.dn { color: var(--red); }
+.chart-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2); padding: 14px; margin-bottom: 10px; }
+.chart-lbl { font-family: var(--mono); font-size: 9px; color: var(--text3); letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 12px; }
+.chart-box { position: relative; width: 100%; height: 140px; }
+.pr-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2); overflow: hidden; margin-bottom: 10px; }
+.pr-hd { padding: 12px 14px 8px; font-family: var(--mono); font-size: 9px; color: var(--text3); letter-spacing: 0.07em; text-transform: uppercase; }
+.pr-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; border-top: 1px solid var(--border); }
+.pr-name { font-size: 12px; color: var(--text2); }
+.pr-val { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--text); }
+.bw-chart-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2); padding: 14px; margin-bottom: 10px; }
+.no-data { padding: 60px 18px; text-align: center; font-family: var(--mono); font-size: 10px; color: var(--text3); letter-spacing: 0.07em; text-transform: uppercase; line-height: 2; }
+.day-comparison { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2); overflow: hidden; margin-bottom: 10px; }
+.day-comp-hd { padding: 12px 14px 8px; font-family: var(--mono); font-size: 9px; color: var(--text3); letter-spacing: 0.07em; text-transform: uppercase; }
+.day-comp-row { display: flex; align-items: center; padding: 9px 14px; border-top: 1px solid var(--border); gap: 12px; }
+.day-comp-name { font-size: 12px; color: var(--text2); flex: 1; }
+.day-comp-vals { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.day-comp-this { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--text); }
+.day-comp-prev { font-family: var(--mono); font-size: 9px; color: var(--text3); }
+.day-comp-diff { font-family: var(--mono); font-size: 9px; }
+
+/* NAV */
+.nav { height: calc(var(--nav-h) + env(safe-area-inset-bottom)); flex-shrink: 0; background: rgba(10,10,10,0.97); border-top: 1px solid var(--border); display: flex; align-items: flex-start; padding-top: 8px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); z-index: 20; }
+.nb { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 0; font-family: var(--mono); font-size: 8px; color: var(--text3); background: none; border: none; cursor: pointer; letter-spacing: 0.07em; text-transform: uppercase; transition: color 0.15s; }
+.nb.active { color: var(--text); }
+.nb-icon { font-size: 16px; line-height: 1; }
+
+/* BOTTOM SHEET */
+.sheet-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 50; opacity: 0; pointer-events: none; transition: opacity 0.22s; }
+.sheet-overlay.open { opacity: 1; pointer-events: all; }
+.sheet { position: fixed; left: 50%; bottom: 0; transform: translateX(-50%) translateY(100%); width: 100%; max-width: 430px; background: var(--bg2); border-radius: 20px 20px 0 0; border-top: 1px solid var(--border2); z-index: 51; transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1); max-height: 88dvh; display: flex; flex-direction: column; }
+.sheet-overlay.open .sheet { transform: translateX(-50%) translateY(0); }
+.sheet-handle { width: 36px; height: 4px; background: var(--bg4); border-radius: 2px; margin: 10px auto 0; flex-shrink: 0; }
+.sheet-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px 12px; flex-shrink: 0; border-bottom: 1px solid var(--border); }
+.sheet-title { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text2); }
+.sheet-close { background: none; border: 1px solid var(--border); border-radius: 6px; width: 26px; height: 26px; color: var(--text3); cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+.sheet-body { flex: 1; overflow-y: auto; padding: 14px 18px; -webkit-overflow-scrolling: touch; }
+.sheet-body::-webkit-scrollbar { display: none; }
+
+/* FORMS */
+.form-group { margin-bottom: 12px; }
+.form-lbl { font-family: var(--mono); font-size: 9px; color: var(--text3); letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 5px; display: block; }
+.form-inp { width: 100%; padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r); font-family: var(--mono); font-size: 12px; color: var(--text); transition: border-color 0.12s; }
+.form-inp:focus { outline: none; border-color: var(--border2); }
+.form-select { width: 100%; padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r); font-family: var(--mono); font-size: 12px; color: var(--text); appearance: none; cursor: pointer; }
+.form-select option { background: var(--bg2); }
+.form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pri-btn { width: 100%; padding: 12px; background: var(--text); color: var(--bg); border: none; border-radius: var(--r); font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.1em; cursor: pointer; text-transform: uppercase; transition: opacity 0.15s; }
+.pri-btn:active { opacity: 0.75; }
+.sec-btn { width: 100%; padding: 11px; background: none; color: var(--text2); border: 1px solid var(--border2); border-radius: var(--r); font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; cursor: pointer; text-transform: uppercase; transition: all 0.15s; margin-bottom: 8px; }
+.sec-btn:hover { background: var(--bg3); }
+
+/* EX LIST IN SHEET */
+.ex-item { display: flex; align-items: center; padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r); margin-bottom: 6px; gap: 10px; }
+.ex-item-name { flex: 1; font-size: 12px; color: var(--text); min-width: 0; }
+.ex-item-meta { font-family: var(--mono); font-size: 9px; color: var(--text3); flex-shrink: 0; }
+.ex-del { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 13px; padding: 2px 4px; border-radius: 4px; transition: color 0.12s; flex-shrink: 0; }
+.ex-del:hover { color: var(--red); }
+.sheet-divider { height: 1px; background: var(--border); margin: 14px 0; }
+.sheet-sub-title { font-family: var(--mono); font-size: 9px; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px; }
+
+/* DAY TABS IN SHEET */
+.day-tabs { display: flex; gap: 3px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r); padding: 3px; margin-bottom: 14px; overflow-x: auto; scrollbar-width: none; }
+.day-tabs::-webkit-scrollbar { display: none; }
+.dtab { flex: 1; padding: 6px 4px; border-radius: 7px; border: none; background: none; font-family: var(--mono); font-size: 9px; color: var(--text3); cursor: pointer; letter-spacing: 0.05em; white-space: nowrap; transition: all 0.12s; }
+.dtab.active { background: var(--bg4); color: var(--text); }
+
+/* BODY WEIGHT SHEET */
+.bw-input-big { width: 100%; padding: 16px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r2); font-family: var(--mono); font-size: 28px; color: var(--text); text-align: center; -moz-appearance: textfield; margin-bottom: 8px; }
+.bw-input-big::-webkit-inner-spin-button, .bw-input-big::-webkit-outer-spin-button { -webkit-appearance: none; }
+.bw-input-big:focus { outline: none; border-color: var(--border2); }
+.bw-history { margin-top: 14px; }
+.bw-hist-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.bw-hist-row:last-child { border-bottom: none; }
+.bw-hist-date { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+.bw-hist-val { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--text); }
+
+/* TOAST */
+.toast { position: fixed; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 10px); left: 50%; transform: translateX(-50%); background: var(--bg3); border: 1px solid var(--border2); color: var(--text2); padding: 8px 18px; border-radius: 20px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; opacity: 0; transition: opacity 0.22s; pointer-events: none; z-index: 200; white-space: nowrap; }
+.toast.show { opacity: 1; }
+
+/* ANIMATIONS */
+@keyframes fadeUp { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+.ex-card { animation: fadeUp 0.18s ease both; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <span class="logo">GYMLOG</span>
+    <div class="topbar-actions">
+      <button class="icon-btn" onclick="openEditSheet()" title="Uredi vježbe">✦</button>
+      <div class="icon-btn active-icon" style="font-family:var(--mono);font-size:10px;letter-spacing:0.03em;width:auto;padding:0 10px;cursor:default;">PA</div>
+    </div>
+  </div>
+
+  <!-- WORKOUT VIEW -->
+  <div class="view" id="vWorkout">
+    <div class="cal-wrap">
+      <div class="cal-header">
+        <button class="cal-nav" onclick="changeMonth(-1)">‹</button>
+        <span class="cal-month-label" id="calMonthLbl"></span>
+        <button class="cal-nav" onclick="changeMonth(1)">›</button>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+    </div>
+
+    <div class="week-strip-wrap">
+      <div class="week-meta" id="weekMeta"></div>
+      <div class="week-strip" id="weekStrip"></div>
+    </div>
+
+    <div class="sec-hd">
+      <div class="sec-hd-left">
+        <span class="sec-hd-day" id="dayNameLbl"></span>
+        <span class="sec-hd-date" id="dayDateLbl"></span>
+      </div>
+      <div class="body-weight-pill" onclick="openBWSheet()">
+        <span class="bw-label">Težina</span>
+        <span class="bw-val" id="bwPill">— kg</span>
+      </div>
+    </div>
+
+    <div class="ex-list" id="exList"></div>
+    <div class="save-wrap">
+      <button class="save-btn" onclick="saveWorkout()">Spremi trening</button>
+    </div>
+  </div>
+
+  <!-- STATS VIEW -->
+  <div class="view" id="vStats" style="display:none">
+    <div class="stats-wrap">
+      <div class="stats-seg" id="statsSeg">
+        <button class="seg-btn active" onclick="setStatsSeg('week',this)">Tjedni</button>
+        <button class="seg-btn" onclick="setStatsSeg('day',this)">Po danu</button>
+        <button class="seg-btn" onclick="setStatsSeg('pr',this)">Rekordi</button>
+        <button class="seg-btn" onclick="setStatsSeg('body',this)">Težina</button>
+      </div>
+      <div id="statsContent"></div>
+    </div>
+  </div>
+
+  <!-- NAV -->
+  <div class="nav">
+    <button class="nb active" id="nb1" onclick="switchView('workout')"><span class="nb-icon">◻</span><span>Trening</span></button>
+    <button class="nb" id="nb2" onclick="switchView('stats')"><span class="nb-icon">◈</span><span>Statistika</span></button>
+  </div>
+</div>
+
+<!-- BOTTOM SHEET: EDIT EXERCISES -->
+<div class="sheet-overlay" id="editSheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <span class="sheet-title">Uredi vježbe</span>
+      <button class="sheet-close" onclick="closeSheet('editSheet')">✕</button>
+    </div>
+    <div class="sheet-body" id="editSheetBody"></div>
+  </div>
+</div>
+
+<!-- BOTTOM SHEET: BODY WEIGHT -->
+<div class="sheet-overlay" id="bwSheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <span class="sheet-title">Tjelesna težina</span>
+      <button class="sheet-close" onclick="closeSheet('bwSheet')">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="form-lbl">Danas — <span id="bwDateLbl"></span></div>
+      <input class="bw-input-big" type="number" id="bwInput" placeholder="75.0" step="0.1" min="30" max="250">
+      <button class="pri-btn" onclick="saveBW()">Spremi težinu</button>
+      <div class="bw-history" id="bwHistory"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── CONSTANTS ────────────────────────────────────────────────────────────
+const MN = ['Siječanj','Veljača','Ožujak','Travanj','Svibanj','Lipanj','Srpanj','Kolovoz','Rujan','Listopad','Studeni','Prosinac'];
+const DL = ['Pon','Uto','Sri','Čet','Pet','Sub','Ned'];
+const DK = ['pon','uto','sri','cet','pet','sub','ned'];
+const DF = ['Ponedjeljak','Utorak','Srijeda','Četvrtak','Petak','Subota','Nedjelja'];
+
+const DEFAULT_EX = {
+  pon:[
+    {id:'vijaca',name:'Vijača',format:'vijaca',rounds:5,work:45,rest:15},
+    {id:'hip_thrust',name:'Hanging hip thrust',format:'reps',sets:2},
+    {id:'alt_toes',name:'Hanging alt toes',format:'dual',sets:2,note:'L=desna strana, D=lijeva strana'},
+    {id:'lying_leg',name:'Lying leg raises (4kg)',format:'reps',sets:2,ss:'alt_toes'},
+    {id:'dragon_fly',name:'Dragon fly',format:'reps',sets:2},
+    {id:'l_sit',name:'L-sit na karikama',format:'time',sets:2,ss:'dragon_fly'},
+    {id:'one_arm',name:'Jednoručni sklek',format:'dual',sets:1},
+    {id:'wpush',name:'Sklekovi sa kilažom (27.5kg)',format:'reps',sets:2},
+    {id:'epush',name:'Elevated push-up',format:'reps',sets:2,ss:'wpush'},
+    {id:'rings_str',name:'Rastezanja na karikama',format:'reps',sets:4},
+    {id:'wdips',name:'Weighted dipsevi (20kg)',format:'reps',sets:3},
+    {id:'shpress',name:'Shoulder rotacijski press (14kg)',format:'dual',sets:2},
+  ]
+};
+
+// ── STATE ────────────────────────────────────────────────────────────────
+let db = JSON.parse(localStorage.getItem('gl_db_v4') || '{}');
+let cfg = JSON.parse(localStorage.getItem('gl_cfg_v4') || JSON.stringify(DEFAULT_EX));
+let bwDB = JSON.parse(localStorage.getItem('gl_bw_v4') || '{}');
+let calY, calM, selDate, chartInsts = {}, statsMode = 'week';
+
+function sDB(){ localStorage.setItem('gl_db_v4', JSON.stringify(db)); }
+function sCfg(){ localStorage.setItem('gl_cfg_v4', JSON.stringify(cfg)); }
+function sBW(){ localStorage.setItem('gl_bw_v4', JSON.stringify(bwDB)); }
+function dkey(d){ return d.toISOString().split('T')[0]; }
+function todayDK(){ return dkey(new Date()); }
+function dowI(d){ let i=d.getDay()-1; return i<0?6:i; }
+function dowK(d){ return DK[dowI(d)]; }
+function gid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,5); }
+
+// ── INIT ─────────────────────────────────────────────────────────────────
+(function(){
+  const n = new Date();
+  calY = n.getFullYear(); calM = n.getMonth();
+  selDate = n;
+  renderCal(); renderWeekStrip(); renderExercises(); updateBWPill();
+})();
+
+// ── CALENDAR ─────────────────────────────────────────────────────────────
+function renderCal(){
+  document.getElementById('calMonthLbl').textContent = MN[calM]+' '+calY;
+  const dows = ['Po','Ut','Sr','Če','Pe','Su','Ne'];
+  let h = dows.map(d=>`<div class="dow">${d}</div>`).join('');
+  const first = new Date(calY,calM,1);
+  let sd = first.getDay()-1; if(sd<0) sd=6;
+  const dim = new Date(calY,calM+1,0).getDate();
+  const pdim = new Date(calY,calM,0).getDate();
+  const ts = todayDK(), ss = dkey(selDate);
+  for(let i=0;i<sd;i++) h+=`<div class="cday">${pdim-sd+1+i}</div>`;
+  for(let d=1;d<=dim;d++){
+    const k=dkey(new Date(calY,calM,d));
+    const cls=['cday','in-month',k===ss?'selected':'',k===ts&&k!==ss?'today':'',db[k]?'has-data':''].filter(Boolean).join(' ');
+    h+=`<div class="${cls}" onclick="selectDate(${calY},${calM},${d})">${d}</div>`;
+  }
+  const rem=(sd+dim)%7; if(rem) for(let i=1;i<=7-rem;i++) h+=`<div class="cday">${i}</div>`;
+  document.getElementById('calGrid').innerHTML = h;
+}
+function changeMonth(dir){
+  calM+=dir; if(calM>11){calM=0;calY++;} if(calM<0){calM=11;calY--;}
+  renderCal();
+}
+function selectDate(y,m,d){
+  selDate=new Date(y,m,d);
+  renderCal(); renderWeekStrip(); renderExercises(); updateBWPill();
+}
+
+// ── WEEK STRIP ────────────────────────────────────────────────────────────
+function wkNum(d){
+  const dt=new Date(d); dt.setHours(0,0,0,0);
+  dt.setDate(dt.getDate()+3-(dt.getDay()+6)%7);
+  const w1=new Date(dt.getFullYear(),0,4);
+  return 1+Math.round(((dt-w1)/86400000-3+(w1.getDay()+6)%7)/7);
+}
+function renderWeekStrip(){
+  const di=dowI(selDate);
+  const mon=new Date(selDate); mon.setDate(selDate.getDate()-di);
+  document.getElementById('weekMeta').textContent=`Tjedan ${wkNum(selDate)} · ${selDate.getFullYear()}`;
+  const ss=dkey(selDate);
+  let h='';
+  for(let i=0;i<7;i++){
+    const day=new Date(mon); day.setDate(mon.getDate()+i);
+    const k=dkey(day); const isSel=k===ss;
+    const cls=['wpill',isSel?'active':'',db[k]?'has-data':''].filter(Boolean).join(' ');
+    h+=`<div class="${cls}" onclick="selectDate(${day.getFullYear()},${day.getMonth()},${day.getDate()})">
+      <span class="wpill-dow">${DL[i]}</span>
+      <span class="wpill-num">${day.getDate()}</span>
+      <div class="wpill-dot"></div>
+    </div>`;
+  }
+  document.getElementById('weekStrip').innerHTML=h;
+}
+
+// ── EXERCISES ─────────────────────────────────────────────────────────────
+function renderExercises(){
+  const di=dowI(selDate);
+  document.getElementById('dayNameLbl').textContent=DF[di];
+  document.getElementById('dayDateLbl').textContent=selDate.toLocaleDateString('hr-HR',{day:'numeric',month:'long',year:'numeric'});
+  const exs=cfg[DK[di]], saved=db[dkey(selDate)]||{}, c=document.getElementById('exList');
+  if(!exs||!exs.length){
+    c.innerHTML=`<div class="empty-state"><div class="empty-icon">○</div><div class="empty-title">Nema vježbi</div><div class="empty-sub">Ovaj dan nema vježbi.<br>Dodaj ih putem gumba ✦ gore desno.</div><button class="ghost-btn" onclick="openEditSheet()">+ Dodaj vježbe</button></div>`;
+    return;
+  }
+  const paired=new Set(); let h='';
+  exs.forEach((ex,ei)=>{
+    if(paired.has(ex.id)) return;
+    const partner=exs.find(e=>e.ss===ex.id);
+    if(partner) paired.add(partner.id);
+    h+=`<div class="ex-card" style="animation-delay:${ei*30}ms">`;
+    if(ex.format==='vijaca') h+=renderVijaca(ex,saved);
+    else{
+      h+=renderExTop(ex,!!partner);
+      h+=`<div class="ex-body">${renderSetRows(ex,saved)}</div>`;
+      if(partner){
+        h+=`<div class="ss-sep"><div class="ss-line"></div><span class="ss-txt">super set</span><div class="ss-line"></div></div>`;
+        h+=renderExTop(partner,true,partner.format==='time');
+        h+=`<div class="ex-body">${renderSetRows(partner,saved)}</div>`;
+      }
+    }
+    h+=`</div>`;
+  });
+  c.innerHTML=h;
+  (db[dkey(selDate)]?.vijaca_rounds||[]).forEach((done,i)=>{ if(done){const el=document.getElementById('vr'+i);if(el){el.classList.add('done');el.textContent='✓';}} });
+}
+
+function renderExTop(ex,isSS,isISO){
+  const tagCls=isISO?'tag-iso':isSS?'tag-ss':'';
+  const tagLbl=isISO?'ISO':isSS?'SS':'';
+  return `<div class="ex-card-header"><span class="ex-card-name">${ex.name}</span>${tagLbl?`<span class="tag ${tagCls}">${tagLbl}</span>`:''}</div>${ex.note?`<div class="ex-note">${ex.note}</div>`:''}`;
+}
+
+function renderSetRows(ex,saved){
+  if(ex.format==='reps'){
+    let h=`<div class="set-row r hd"><div></div><div class="col-hd">Pon.</div><div class="col-hd">kg</div><div class="col-hd">Nap.</div></div>`;
+    for(let s=0;s<ex.sets;s++){
+      const rv=saved[ex.id+'_r_'+s]||'',kv=saved[ex.id+'_k_'+s]||'',nv=saved[ex.id+'_n_'+s]||'';
+      h+=`<div class="set-row r"><span class="slbl">S${s+1}</span><input class="inp" type="number" id="${ex.id}_r_${s}" value="${rv}" placeholder="0" min="0"><input class="inp" type="number" id="${ex.id}_k_${s}" value="${kv}" placeholder="–" min="0" step="0.5"><input class="inp sm" id="${ex.id}_n_${s}" value="${nv}" placeholder="…"></div>`;
+    }
+    return h;
+  }
+  if(ex.format==='time'){
+    let h=`<div class="set-row t hd"><div></div><div class="col-hd">Sek.</div><div class="col-hd">kg</div><div></div></div>`;
+    for(let s=0;s<ex.sets;s++){
+      const tv=saved[ex.id+'_t_'+s]||'',kv=saved[ex.id+'_k_'+s]||'';
+      h+=`<div class="set-row t"><span class="slbl">S${s+1}</span><input class="inp purple" type="number" id="${ex.id}_t_${s}" value="${tv}" placeholder="0" min="0"><input class="inp" type="number" id="${ex.id}_k_${s}" value="${kv}" placeholder="–" min="0" step="0.5"><div></div></div>`;
+    }
+    return h;
+  }
+  if(ex.format==='dual'){
+    let h=`<div class="set-row d hd"><div></div><div class="col-hd">L</div><div class="col-hd">D</div><div class="col-hd">kg</div></div>`;
+    for(let s=0;s<ex.sets;s++){
+      const lv=saved[ex.id+'_l_'+s]||'',rv=saved[ex.id+'_r_'+s]||'',kv=saved[ex.id+'_k_'+s]||'';
+      h+=`<div class="set-row d"><span class="slbl">S${s+1}</span><input class="inp" type="number" id="${ex.id}_l_${s}" value="${lv}" placeholder="0" min="0"><input class="inp" type="number" id="${ex.id}_r_${s}" value="${rv}" placeholder="0" min="0"><input class="inp" type="number" id="${ex.id}_k_${s}" value="${kv}" placeholder="–" min="0" step="0.5"></div>`;
+    }
+    return h;
+  }
+  return '';
+}
+
+function renderVijaca(ex,saved){
+  const vr=saved['vijaca_rounds']||[];
+  return `<div class="ex-card-header"><span class="ex-card-name">${ex.name}</span><span class="tag tag-cardio">Kardio</span></div>
+    <div class="ex-note">${ex.work}s rad · ${ex.rest}s odmor · ${ex.rounds} rundi</div>
+    <div class="vijaca-rounds">${Array.from({length:ex.rounds},(_,i)=>`<div class="vdot${vr[i]?' done':''}" id="vr${i}" onclick="toggleVijaca(${i})">${vr[i]?'✓':i+1}</div>`).join('')}</div>`;
+}
+
+function toggleVijaca(idx){
+  const k=dkey(selDate); if(!db[k])db[k]={};
+  if(!db[k].vijaca_rounds)db[k].vijaca_rounds=Array(5).fill(false);
+  db[k].vijaca_rounds[idx]=!db[k].vijaca_rounds[idx];
+  const el=document.getElementById('vr'+idx);
+  if(db[k].vijaca_rounds[idx]){el.classList.add('done');el.textContent='✓';}
+  else{el.classList.remove('done');el.textContent=idx+1;}
+  sDB(); renderCal(); renderWeekStrip();
+}
+
+function saveWorkout(){
+  const exs=cfg[dowK(selDate)]; if(!exs) return;
+  const k=dkey(selDate); if(!db[k])db[k]={};
+  const vr=db[k].vijaca_rounds;
+  exs.forEach(ex=>{
+    if(ex.format==='vijaca') return;
+    for(let s=0;s<ex.sets;s++){
+      ['r','k','n','t','l'].forEach(f=>{
+        const el=document.getElementById(`${ex.id}_${f}_${s}`);
+        if(el) db[k][`${ex.id}_${f}_${s}`]=el.value;
+      });
+    }
+  });
+  if(vr!==undefined) db[k].vijaca_rounds=vr;
+  sDB(); renderCal(); renderWeekStrip();
+  showToast('Trening spremljen ✓');
+}
+
+// ── BODY WEIGHT ───────────────────────────────────────────────────────────
+function updateBWPill(){
+  const k=dkey(selDate), val=bwDB[k];
+  const pill=document.getElementById('bwPill');
+  pill.textContent=val?val+' kg':'— kg';
+  pill.className='bw-val'+(val?' set':'');
+}
+function openBWSheet(){
+  const k=dkey(selDate);
+  document.getElementById('bwDateLbl').textContent=selDate.toLocaleDateString('hr-HR',{day:'numeric',month:'long'});
+  document.getElementById('bwInput').value=bwDB[k]||'';
+  renderBWHistory();
+  openSheet('bwSheet');
+}
+function saveBW(){
+  const v=parseFloat(document.getElementById('bwInput').value);
+  if(!v||v<30||v>300){showToast('Upiši ispravnu težinu');return;}
+  bwDB[dkey(selDate)]=v; sBW();
+  updateBWPill(); renderBWHistory();
+  showToast('Težina spremljena ✓');
+}
+function renderBWHistory(){
+  const entries=Object.entries(bwDB).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,10);
+  if(!entries.length){document.getElementById('bwHistory').innerHTML='';return;}
+  let h='<div class="sheet-divider"></div><div class="sheet-sub-title">Zadnjih 10 unosa</div>';
+  entries.forEach(([k,v])=>{
+    const d=new Date(k+'T12:00:00');
+    h+=`<div class="bw-hist-row"><span class="bw-hist-date">${d.toLocaleDateString('hr-HR',{day:'numeric',month:'short',year:'numeric'})}</span><span class="bw-hist-val">${v} kg</span></div>`;
+  });
+  document.getElementById('bwHistory').innerHTML=h;
+}
+
+// ── EDIT SHEET ────────────────────────────────────────────────────────────
+let editDayKey=null;
+function openEditSheet(){
+  editDayKey=dowK(selDate);
+  renderEditBody();
+  openSheet('editSheet');
+}
+function renderEditBody(){
+  const di=DK.indexOf(editDayKey);
+  const exs=cfg[editDayKey]||[];
+  let h='';
+  // Day tabs
+  h+=`<div class="day-tabs">${DK.map((k,i)=>`<button class="dtab${k===editDayKey?' active':''}" onclick="editDayKey='${k}';renderEditBody()">${DL[i]}</button>`).join('')}</div>`;
+  // Current exercises
+  if(exs.length){
+    h+=`<div class="sheet-sub-title">Trenutne vježbe — ${DF[di]}</div>`;
+    exs.forEach((ex,idx)=>{
+      const fmt={reps:'Serije',time:'Izdržaj',dual:'L/D',vijaca:'Kardio'}[ex.format]||ex.format;
+      h+=`<div class="ex-item"><span class="ex-item-name">${ex.name}</span><span class="ex-item-meta">${fmt}${ex.sets?' · '+ex.sets+'×':''}</span><button class="ex-del" onclick="delEx('${editDayKey}',${idx})">✕</button></div>`;
+    });
+  } else {
+    h+=`<div style="font-family:var(--mono);font-size:9px;color:var(--text3);text-align:center;padding:16px 0;letter-spacing:0.07em;text-transform:uppercase">Nema vježbi za ovaj dan</div>`;
+  }
+  // Add form
+  h+=`<div class="sheet-divider"></div><div class="sheet-sub-title">Dodaj vježbu</div>
+  <div class="form-group"><label class="form-lbl">Naziv</label><input class="form-inp" id="neName" placeholder="npr. Bench press"></div>
+  <div class="form-grid-2" style="margin-bottom:10px">
+    <div><label class="form-lbl">Format</label>
+      <select class="form-select" id="neFmt" onchange="toggleSetsVis()">
+        <option value="reps">Serije (ponav.)</option>
+        <option value="dual">Serije (L/D)</option>
+        <option value="time">Izdržaj (sek.)</option>
+        <option value="vijaca">Vijača / Kardio</option>
+      </select>
+    </div>
+    <div id="neSetsWrap"><label class="form-lbl">Serija</label><input class="form-inp" id="neSets" type="number" value="3" min="1" max="10"></div>
+  </div>
+  <div id="neSsWrap" style="margin-bottom:10px">
+    <label class="form-lbl">Super set s</label>
+    <select class="form-select" id="neSs">
+      <option value="">— Nije super set —</option>
+      ${exs.map(e=>`<option value="${e.id}">${e.name}</option>`).join('')}
+    </select>
+  </div>
+  <button class="pri-btn" onclick="addEx()">+ Dodaj vježbu</button>`;
+
+  document.getElementById('editSheetBody').innerHTML=h;
+}
+function toggleSetsVis(){
+  const fmt=document.getElementById('neFmt').value;
+  document.getElementById('neSetsWrap').style.opacity=fmt==='vijaca'?'0.3':'1';
+  document.getElementById('neSsWrap').style.display=fmt==='vijaca'?'none':'block';
+}
+function delEx(dayKey,idx){
+  if(!cfg[dayKey]) return;
+  cfg[dayKey].splice(idx,1); sCfg();
+  renderEditBody(); renderExercises();
+}
+function addEx(){
+  const name=document.getElementById('neName').value.trim();
+  if(!name){showToast('Upiši naziv'); return;}
+  const fmt=document.getElementById('neFmt').value;
+  const sets=parseInt(document.getElementById('neSets')?.value)||3;
+  const ss=document.getElementById('neSs')?.value||'';
+  const ex={id:gid(),name,format:fmt};
+  if(fmt!=='vijaca') ex.sets=sets;
+  if(fmt==='vijaca'){ex.rounds=5;ex.work=45;ex.rest=15;}
+  if(ss) ex.ss=ss;
+  if(!cfg[editDayKey]) cfg[editDayKey]=[];
+  cfg[editDayKey].push(ex); sCfg();
+  renderEditBody(); renderExercises();
+  showToast('Vježba dodana ✓');
+}
+
+// ── STATS ─────────────────────────────────────────────────────────────────
+function setStatsSeg(mode, btn){
+  statsMode=mode;
+  document.querySelectorAll('.seg-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderStats();
+}
+function renderStats(){
+  const c=document.getElementById('statsContent');
+  Object.values(chartInsts).forEach(ch=>ch.destroy()); chartInsts={};
+  const keys=Object.keys(db).sort();
+  if(!keys.length){c.innerHTML=`<div class="no-data">Nema podataka.<br>Unesi trening<br>pa se vrati.</div>`;return;}
+  if(statsMode==='week') renderStatsWeek(c);
+  else if(statsMode==='day') renderStatsDay(c);
+  else if(statsMode==='pr') renderStatsPR(c);
+  else if(statsMode==='body') renderStatsBW(c);
+}
+
+function renderStatsWeek(c){
+  const wvols=calcWeeklyVols();
+  const now=new Date(), tw=wkNum(now), ty=now.getFullYear();
+  const thisV=wvols.find(w=>w.wn===tw&&w.yr===ty)?.vol||0;
+  const lastV=wvols.find(w=>w.wn===tw-1&&w.yr===ty)?.vol||0;
+  const diff=thisV-lastV;
+  const keys=Object.keys(db).sort();
+  let h=`<div class="metric-row">
+    <div class="metric"><div class="metric-val">${keys.length}</div><div class="metric-lbl">Ukupno treninga</div></div>
+    <div class="metric"><div class="metric-val">${thisV.toLocaleString()}<span class="metric-unit"> kg</span></div><div class="metric-lbl">Ovaj tjedan</div>${lastV>0?`<div class="metric-delta ${diff>=0?'up':'dn'}">${diff>=0?'+':''}${Math.round(diff)} kg vs prošli</div>`:''}</div>
+  </div>`;
+  h+=`<div class="chart-card"><div class="chart-lbl">Tjedni volumen (kg)</div><div class="chart-box"><canvas id="chWeek"></canvas></div></div>`;
+  c.innerHTML=h;
+  setTimeout(()=>{
+    const ctx=document.getElementById('chWeek'); if(!ctx) return;
+    chartInsts.week=new Chart(ctx,{type:'bar',data:{labels:wvols.map(w=>`T${w.wn}`),datasets:[{data:wvols.map(w=>w.vol),backgroundColor:'rgba(240,240,240,0.15)',borderColor:'rgba(240,240,240,0.4)',borderWidth:1,borderRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{family:"'DM Mono'",size:9},color:'#444',autoSkip:true,maxRotation:0}},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{font:{family:"'DM Mono'",size:9},color:'#444'}}}}});
+  },80);
+}
+
+function renderStatsDay(c){
+  // For each configured day, compare latest session vs previous same-day session
+  let h='';
+  DK.forEach((dayKey,di)=>{
+    const exs=cfg[dayKey]; if(!exs||!exs.length) return;
+    // find all dates for this day of week
+    const allDates=Object.keys(db).filter(k=>{ const d=new Date(k+'T12:00:00'); return DK[dowI(d)]===dayKey; }).sort();
+    if(allDates.length<1) return;
+    const latest=allDates[allDates.length-1];
+    const prev=allDates.length>1?allDates[allDates.length-2]:null;
+    const latestVol=calcDayVol(db[latest]||{});
+    const prevVol=prev?calcDayVol(db[prev]||{}):null;
+    const diff=prevVol!=null?latestVol-prevVol:null;
+    h+=`<div class="day-comparison"><div class="day-comp-hd">${DF[di]}</div>
+      <div class="day-comp-row">
+        <span class="day-comp-name">Volumen</span>
+        <div class="day-comp-vals">
+          <span class="day-comp-this">${latestVol.toLocaleString()} kg</span>
+          ${prevVol!=null?`<span class="day-comp-prev">prošli: ${prevVol.toLocaleString()} kg</span><span class="day-comp-diff ${diff>=0?'up':'dn'}">${diff>=0?'+':''}${Math.round(diff)} kg</span>`:'<span class="day-comp-prev">nema prethodnog</span>'}
+        </div>
+      </div>`;
+    // Top exercises comparison
+    exs.filter(e=>e.format==='reps'||e.format==='dual').slice(0,3).forEach(ex=>{
+      const latestKg=getBestKg(db[latest]||{},ex.id);
+      const prevKg=prev?getBestKg(db[prev]||{},ex.id):null;
+      if(!latestKg) return;
+      const ediff=prevKg!=null?latestKg-prevKg:null;
+      h+=`<div class="day-comp-row"><span class="day-comp-name" style="font-size:11px">${ex.name}</span>
+        <div class="day-comp-vals">
+          <span class="day-comp-this">${latestKg} kg</span>
+          ${prevKg!=null?`<span class="day-comp-prev">prošli: ${prevKg} kg</span>${ediff!==0?`<span class="day-comp-diff ${ediff>0?'up':'dn'}">${ediff>0?'+':''}${ediff} kg</span>`:''}`:prev?'<span class="day-comp-prev">nije uneseno</span>':''}
+        </div>
+      </div>`;
+    });
+    h+=`</div>`;
+  });
+  if(!h) h=`<div class="no-data">Unesi treninge<br>za prikaz usporedbe.</div>`;
+  c.innerHTML=h;
+}
+
+function getBestKg(dayData,exId){
+  let best=null;
+  Object.entries(dayData).forEach(([k,v])=>{
+    if(k.startsWith(exId+'_k_')&&v&&parseFloat(v)>0){ const n=parseFloat(v); if(!best||n>best) best=n; }
+  });
+  return best;
+}
+
+function renderStatsPR(c){
+  const prs=calcPRs();
+  if(!Object.keys(prs).length){c.innerHTML=`<div class="no-data">Unesi treninge<br>za prikaz rekorda.</div>`;return;}
+  let h=`<div class="pr-card"><div class="pr-hd">Osobni rekordi (max kg)</div>`;
+  Object.entries(prs).forEach(([n,v])=>{ h+=`<div class="pr-row"><span class="pr-name">${n}</span><span class="pr-val">${v} kg</span></div>`; });
+  h+=`</div>`;
+  c.innerHTML=h;
+}
+
+function renderStatsBW(c){
+  const entries=Object.entries(bwDB).sort((a,b)=>a[0].localeCompare(b[0]));
+  if(!entries.length){c.innerHTML=`<div class="no-data">Unesi tjelesnu težinu<br>(klikni na pill gore).</div>`;return;}
+  const latest=entries[entries.length-1][1];
+  const first=entries[0][1];
+  const change=latest-first;
+  let h=`<div class="metric-row">
+    <div class="metric"><div class="metric-val">${latest}<span class="metric-unit"> kg</span></div><div class="metric-lbl">Trenutna</div></div>
+    <div class="metric"><div class="metric-val ${change<=0?'up':'dn'}">${change>0?'+':''}${change.toFixed(1)}<span class="metric-unit"> kg</span></div><div class="metric-lbl">Ukupna promjena</div></div>
+  </div>`;
+  h+=`<div class="bw-chart-card"><div class="chart-lbl">Tjelesna težina (kg)</div><div class="chart-box"><canvas id="chBW"></canvas></div></div>`;
+  c.innerHTML=h;
+  setTimeout(()=>{
+    const ctx=document.getElementById('chBW'); if(!ctx) return;
+    chartInsts.bw=new Chart(ctx,{type:'line',data:{labels:entries.map(([k])=>{ const d=new Date(k+'T12:00:00'); return d.toLocaleDateString('hr-HR',{day:'numeric',month:'short'}); }),datasets:[{data:entries.map(([,v])=>v),borderColor:'rgba(240,240,240,0.6)',backgroundColor:'rgba(240,240,240,0.04)',borderWidth:1.5,pointRadius:3,pointBackgroundColor:'rgba(240,240,240,0.6)',tension:0.3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{family:"'DM Mono'",size:9},color:'#444',autoSkip:true,maxRotation:0}},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{font:{family:"'DM Mono'",size:9},color:'#444'}}}}});
+  },80);
+}
+
+// ── CALC HELPERS ──────────────────────────────────────────────────────────
+function calcWeeklyVols(){
+  const map={};
+  Object.entries(db).forEach(([k,dd])=>{
+    const d=new Date(k+'T12:00:00'), wn=wkNum(d), yr=d.getFullYear(), wk=yr+'-'+wn;
+    if(!map[wk]) map[wk]={wn,yr,vol:0};
+    map[wk].vol+=calcDayVol(dd);
+  });
+  return Object.values(map).sort((a,b)=>a.yr!==b.yr?a.yr-b.yr:a.wn-b.wn);
+}
+function calcDayVol(dd){
+  let v=0;
+  Object.entries(dd).forEach(([key,val])=>{
+    if(key.includes('_k_')&&val&&parseFloat(val)>0){
+      const[exId,si]=key.split('_k_');
+      const reps=parseInt(dd[exId+'_r_'+si]||dd[exId+'_l_'+si]||0);
+      v+=parseFloat(val)*(reps||1);
+    }
+  });
+  return Math.round(v);
+}
+function calcPRs(){
+  const prs={};
+  Object.values(db).forEach(dd=>{
+    Object.entries(dd).forEach(([k,v])=>{
+      if(k.includes('_k_')&&v&&parseFloat(v)>0){
+        const name=getExName(k.split('_k_')[0]);
+        if(name&&(!prs[name]||parseFloat(v)>prs[name])) prs[name]=parseFloat(v);
+      }
+    });
+  });
+  return prs;
+}
+function getExName(id){
+  for(const exs of Object.values(cfg)){ const e=exs?.find(x=>x.id===id); if(e) return e.name; }
+  return null;
+}
+
+// ── SHEET / NAV HELPERS ───────────────────────────────────────────────────
+function openSheet(id){ document.getElementById(id).classList.add('open'); }
+function closeSheet(id){ document.getElementById(id).classList.remove('open'); }
+['editSheet','bwSheet'].forEach(id=>{
+  document.getElementById(id).addEventListener('click',function(e){ if(e.target===this) closeSheet(id); });
+});
+function switchView(v){
+  document.getElementById('vWorkout').style.display=v==='workout'?'block':'none';
+  document.getElementById('vStats').style.display=v==='stats'?'block':'none';
+  document.getElementById('nb1').classList.toggle('active',v==='workout');
+  document.getElementById('nb2').classList.toggle('active',v==='stats');
+  if(v==='stats') renderStats();
+}
+function showToast(msg){
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2000);
+}
+</script>
+</body>
+</html>
