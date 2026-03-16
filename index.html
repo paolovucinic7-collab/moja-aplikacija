@@ -41,6 +41,15 @@ body { height: 100%; background: var(--bg); color: var(--text); font-family: var
 .app { position: fixed; inset: 0; max-width: 430px; margin: 0 auto; display: flex; flex-direction: column; }
 
 /* TOPBAR */
+/* PROFILE */
+.profile-item { display:flex; align-items:center; gap:14px; padding:16px 0; border-bottom:1px solid var(--border); cursor:pointer; transition:opacity 0.15s; }
+.profile-item:last-child { border-bottom:none; }
+.profile-item:active { opacity:0.6; }
+.profile-avatar { width:44px; height:44px; border-radius:50%; background:var(--bg3); border:1px solid var(--border2); display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:12px; letter-spacing:0.08em; color:var(--text); flex-shrink:0; }
+.profile-avatar.active { border-color:rgba(255,255,255,0.35); background:var(--bg4); }
+.profile-name { font-size:15px; font-weight:500; color:var(--text); flex:1; }
+.profile-check { color:var(--green); font-size:18px; }
+
 .topbar { height: var(--top-h); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-bottom: 1px solid var(--border); background: var(--bg); z-index: 10; }
 .logo { font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.15em; color: var(--text2); }
 .topbar-actions { display: flex; align-items: center; gap: 8px; }
@@ -251,7 +260,7 @@ body { height: 100%; background: var(--bg); color: var(--text); font-family: var
     <span class="logo">GYMLOG</span>
     <div class="topbar-actions">
       <button class="icon-btn" onclick="openEditSheet()" title="Uredi vježbe">✦</button>
-      <div class="icon-btn active-icon" style="font-family:var(--mono);font-size:10px;letter-spacing:0.03em;width:auto;padding:0 10px;cursor:default;">PA</div>
+      <button class="icon-btn active-icon" id="profileBtn" style="font-family:var(--mono);font-size:10px;letter-spacing:0.03em;width:auto;padding:0 10px;" onclick="openProfileSheet()" title="Promijeni profil">PA</button>
     </div>
   </div>
 
@@ -337,6 +346,20 @@ body { height: 100%; background: var(--bg); color: var(--text); font-family: var
   </div>
 </div>
 
+<!-- BOTTOM SHEET: PROFILE SWITCHER -->
+<div class="sheet-overlay" id="profileSheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <span class="sheet-title">Odaberi profil</span>
+      <button class="sheet-close" onclick="closeSheet('profileSheet')">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div id="profileList"></div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -363,15 +386,71 @@ const DEFAULT_EX = {
   ]
 };
 
+// ── PROFILES ─────────────────────────────────────────────────────────────
+const PROFILES = {
+  paolo:   { name: 'Paolo',   initials: 'PA' },
+  massimo: { name: 'Massimo', initials: 'MA' }
+};
+
+// Migrate old data (pre-profile) to Paolo's keys
+(function migrate(){
+  ['gl_db_v4','gl_cfg_v4','gl_bw_v4'].forEach(oldKey => {
+    const newKey = oldKey + '_paolo';
+    if(localStorage.getItem(oldKey) && !localStorage.getItem(newKey)){
+      localStorage.setItem(newKey, localStorage.getItem(oldKey));
+      localStorage.removeItem(oldKey);
+    }
+  });
+})();
+
+let currentProfile = localStorage.getItem('gl_profile') || 'paolo';
+
+function dbKey()  { return 'gl_db_v4_'  + currentProfile; }
+function cfgKey() { return 'gl_cfg_v4_' + currentProfile; }
+function bwKey()  { return 'gl_bw_v4_'  + currentProfile; }
+
 // ── STATE ────────────────────────────────────────────────────────────────
-let db = JSON.parse(localStorage.getItem('gl_db_v4') || '{}');
-let cfg = JSON.parse(localStorage.getItem('gl_cfg_v4') || JSON.stringify(DEFAULT_EX));
-let bwDB = JSON.parse(localStorage.getItem('gl_bw_v4') || '{}');
+let db, cfg, bwDB;
 let calY, calM, selDate, chartInsts = {}, statsMode = 'week';
 
-function sDB(){ localStorage.setItem('gl_db_v4', JSON.stringify(db)); }
-function sCfg(){ localStorage.setItem('gl_cfg_v4', JSON.stringify(cfg)); }
-function sBW(){ localStorage.setItem('gl_bw_v4', JSON.stringify(bwDB)); }
+function loadProfileData(){
+  db    = JSON.parse(localStorage.getItem(dbKey())  || '{}');
+  cfg   = JSON.parse(localStorage.getItem(cfgKey()) || JSON.stringify(DEFAULT_EX));
+  bwDB  = JSON.parse(localStorage.getItem(bwKey())  || '{}');
+}
+loadProfileData();
+
+function sDB(){ localStorage.setItem(dbKey(),  JSON.stringify(db)); }
+function sCfg(){ localStorage.setItem(cfgKey(), JSON.stringify(cfg)); }
+function sBW(){ localStorage.setItem(bwKey(),  JSON.stringify(bwDB)); }
+
+// ── PROFILE SWITCHER ──────────────────────────────────────────────────────
+function openProfileSheet(){
+  let h = '';
+  Object.entries(PROFILES).forEach(([key, p]) => {
+    const isActive = key === currentProfile;
+    h += `<div class="profile-item" onclick="switchProfile('${key}')">
+      <div class="profile-avatar${isActive?' active':''}">${p.initials}</div>
+      <span class="profile-name">${p.name}</span>
+      ${isActive ? '<span class="profile-check">✓</span>' : ''}
+    </div>`;
+  });
+  document.getElementById('profileList').innerHTML = h;
+  openSheet('profileSheet');
+}
+function switchProfile(name){
+  if(name === currentProfile){ closeSheet('profileSheet'); return; }
+  currentProfile = name;
+  localStorage.setItem('gl_profile', name);
+  loadProfileData();
+  const p = PROFILES[name];
+  document.getElementById('profileBtn').textContent = p.initials;
+  closeSheet('profileSheet');
+  Object.values(chartInsts).forEach(ch => ch.destroy()); chartInsts = {};
+  renderCal(); renderWeekStrip(); renderExercises(); updateBWPill();
+  if(document.getElementById('vStats').style.display !== 'none') renderStats();
+  showToast('Profil: ' + p.name + ' ✓');
+}
 function dkey(d){ return d.toISOString().split('T')[0]; }
 function todayDK(){ return dkey(new Date()); }
 function dowI(d){ let i=d.getDay()-1; return i<0?6:i; }
@@ -380,6 +459,8 @@ function gid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 
 // ── INIT ─────────────────────────────────────────────────────────────────
 (function(){
+  // Set correct profile initials on topbar
+  document.getElementById('profileBtn').textContent = PROFILES[currentProfile].initials;
   const n = new Date();
   calY = n.getFullYear(); calM = n.getMonth();
   selDate = n;
@@ -800,7 +881,7 @@ function getExName(id){
 // ── SHEET / NAV HELPERS ───────────────────────────────────────────────────
 function openSheet(id){ document.getElementById(id).classList.add('open'); }
 function closeSheet(id){ document.getElementById(id).classList.remove('open'); }
-['editSheet','bwSheet'].forEach(id=>{
+['editSheet','bwSheet','profileSheet'].forEach(id=>{
   document.getElementById(id).addEventListener('click',function(e){ if(e.target===this) closeSheet(id); });
 });
 function switchView(v){
