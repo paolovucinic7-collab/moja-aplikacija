@@ -42,13 +42,25 @@ body { height: 100%; background: var(--bg); color: var(--text); font-family: var
 
 /* TOPBAR */
 /* PROFILE */
-.profile-item { display:flex; align-items:center; gap:14px; padding:16px 0; border-bottom:1px solid var(--border); cursor:pointer; transition:opacity 0.15s; }
+.profile-item { display:flex; align-items:center; gap:14px; padding:14px 0; border-bottom:1px solid var(--border); cursor:pointer; transition:opacity 0.15s; }
 .profile-item:last-child { border-bottom:none; }
 .profile-item:active { opacity:0.6; }
 .profile-avatar { width:44px; height:44px; border-radius:50%; background:var(--bg3); border:1px solid var(--border2); display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:12px; letter-spacing:0.08em; color:var(--text); flex-shrink:0; }
-.profile-avatar.active { border-color:rgba(255,255,255,0.35); background:var(--bg4); }
+.profile-avatar.active { border-color:rgba(255,255,255,0.4); background:var(--bg4); box-shadow:0 0 0 1px rgba(255,255,255,0.15); }
 .profile-name { font-size:15px; font-weight:500; color:var(--text); flex:1; }
-.profile-check { color:var(--green); font-size:18px; }
+.profile-item-right { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.profile-check { color:var(--green); font-size:17px; }
+.profile-del-btn { background:none; border:1px solid var(--border); border-radius:6px; color:var(--text3); font-size:12px; cursor:pointer; padding:4px 8px; transition:all 0.15s; line-height:1; }
+.profile-del-btn:hover { border-color:var(--red); color:var(--red); }
+.profile-create-btn { width:100%; padding:13px; background:none; border:1px dashed var(--border2); border-radius:var(--r); font-family:var(--mono); font-size:10px; color:var(--text2); cursor:pointer; letter-spacing:0.1em; text-transform:uppercase; transition:all 0.15s; margin-top:6px; }
+.profile-create-btn:hover { background:var(--bg3); border-style:solid; }
+.profile-back-btn { background:none; border:none; color:var(--text3); font-family:var(--mono); font-size:9px; letter-spacing:0.07em; cursor:pointer; padding:0 0 12px; text-transform:uppercase; display:flex; align-items:center; gap:4px; }
+.profile-initials-preview { width:52px; height:52px; border-radius:50%; background:var(--bg3); border:1px solid var(--border2); display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:14px; letter-spacing:0.08em; color:var(--text); margin:4px auto 16px; transition:all 0.2s; }
+.profile-delete-confirm { text-align:center; padding:8px 0 16px; }
+.profile-delete-name { font-size:17px; font-weight:500; color:var(--text); margin-bottom:6px; }
+.profile-delete-warn { font-family:var(--mono); font-size:9px; color:var(--red); letter-spacing:0.05em; text-transform:uppercase; line-height:1.8; }
+.save-indicator { font-family:var(--mono); font-size:9px; color:var(--green); letter-spacing:0.06em; opacity:0; transition:opacity 0.3s; position:absolute; right:18px; bottom:18px; text-transform:uppercase; }
+.save-indicator.show { opacity:1; }
 
 .topbar { height: var(--top-h); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-bottom: 1px solid var(--border); background: var(--bg); z-index: 10; }
 .logo { font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.15em; color: var(--text2); }
@@ -351,11 +363,11 @@ body { height: 100%; background: var(--bg); color: var(--text); font-family: var
   <div class="sheet">
     <div class="sheet-handle"></div>
     <div class="sheet-header">
-      <span class="sheet-title">Odaberi profil</span>
+      <span class="sheet-title" id="profileSheetTitle">Profili</span>
       <button class="sheet-close" onclick="closeSheet('profileSheet')">✕</button>
     </div>
     <div class="sheet-body">
-      <div id="profileList"></div>
+      <div id="profileSheetContent"></div>
     </div>
   </div>
 </div>
@@ -386,70 +398,213 @@ const DEFAULT_EX = {
   ]
 };
 
-// ── PROFILES ─────────────────────────────────────────────────────────────
-const PROFILES = {
-  paolo:   { name: 'Paolo',   initials: 'PA' },
-  massimo: { name: 'Massimo', initials: 'MA' }
-};
+// ── PROFILE SYSTEM ────────────────────────────────────────────────────────
+const PK = 'gl_profiles_v2';
+const CK = 'gl_current_v2';
 
-// Migrate old data (pre-profile) to Paolo's keys
+function getProfiles(){ return JSON.parse(localStorage.getItem(PK)||'[]'); }
+function saveProfileList(list){ localStorage.setItem(PK, JSON.stringify(list)); }
+function getCurrentId(){ return localStorage.getItem(CK)||null; }
+function setCurrentId(id){ localStorage.setItem(CK, id); }
+
+function getInitials(name){
+  const w = name.trim().split(/\s+/);
+  return (w.length>=2 ? w[0][0]+w[1][0] : name.slice(0,2)).toUpperCase();
+}
+
+// Migrate ALL old storage formats → new profile system
 (function migrate(){
-  ['gl_db_v4','gl_cfg_v4','gl_bw_v4'].forEach(oldKey => {
-    const newKey = oldKey + '_paolo';
-    if(localStorage.getItem(oldKey) && !localStorage.getItem(newKey)){
-      localStorage.setItem(newKey, localStorage.getItem(oldKey));
-      localStorage.removeItem(oldKey);
-    }
+  if(getProfiles().length > 0) return; // already done
+  const pId = 'p_paolo', mId = 'p_massimo';
+  const profiles = [{ id:pId, name:'Paolo', initials:'PA', pw:'' }];
+
+  // Handle every old key format for Paolo
+  [
+    ['gl_db_v4',        'gl_db_'+pId],
+    ['gl_cfg_v4',       'gl_cfg_'+pId],
+    ['gl_bw_v4',        'gl_bw_'+pId],
+    ['gl_db_v4_paolo',  'gl_db_'+pId],
+    ['gl_cfg_v4_paolo', 'gl_cfg_'+pId],
+    ['gl_bw_v4_paolo',  'gl_bw_'+pId],
+  ].forEach(([ok,nk])=>{
+    const v = localStorage.getItem(ok);
+    if(v && !localStorage.getItem(nk)) localStorage.setItem(nk, v);
+    if(v) localStorage.removeItem(ok);
   });
+
+  // Handle Massimo's data if it exists
+  const massimoKeys = ['gl_db_v4_massimo','gl_cfg_v4_massimo','gl_bw_v4_massimo'];
+  const hasMassimo = massimoKeys.some(k => localStorage.getItem(k));
+  if(hasMassimo){
+    profiles.push({ id:mId, name:'Massimo', initials:'MA', pw:'' });
+    [
+      ['gl_db_v4_massimo',  'gl_db_'+mId],
+      ['gl_cfg_v4_massimo', 'gl_cfg_'+mId],
+      ['gl_bw_v4_massimo',  'gl_bw_'+mId],
+    ].forEach(([ok,nk])=>{
+      const v = localStorage.getItem(ok);
+      if(v){ localStorage.setItem(nk, v); localStorage.removeItem(ok); }
+    });
+  }
+
+  saveProfileList(profiles);
+  const oldCurrent = localStorage.getItem('gl_profile');
+  setCurrentId(oldCurrent === 'massimo' && hasMassimo ? mId : pId);
+  localStorage.removeItem('gl_profile');
 })();
 
-let currentProfile = localStorage.getItem('gl_profile') || 'paolo';
+// Ensure we have at least one profile
+(function ensureProfile(){
+  if(getProfiles().length === 0){
+    const id = 'p_default';
+    saveProfileList([{ id, name:'Paolo', initials:'PA', pw:'' }]);
+    setCurrentId(id);
+  }
+})();
 
-function dbKey()  { return 'gl_db_v4_'  + currentProfile; }
-function cfgKey() { return 'gl_cfg_v4_' + currentProfile; }
-function bwKey()  { return 'gl_bw_v4_'  + currentProfile; }
+let currentProfileId = getCurrentId();
+// Validate currentProfileId exists in list
+if(!getProfiles().find(p => p.id === currentProfileId)){
+  currentProfileId = getProfiles()[0].id;
+  setCurrentId(currentProfileId);
+}
+
+function dbKey()  { return 'gl_db_'  + currentProfileId; }
+function cfgKey() { return 'gl_cfg_' + currentProfileId; }
+function bwKey()  { return 'gl_bw_'  + currentProfileId; }
 
 // ── STATE ────────────────────────────────────────────────────────────────
 let db, cfg, bwDB;
 let calY, calM, selDate, chartInsts = {}, statsMode = 'week';
 
 function loadProfileData(){
-  db    = JSON.parse(localStorage.getItem(dbKey())  || '{}');
-  cfg   = JSON.parse(localStorage.getItem(cfgKey()) || JSON.stringify(DEFAULT_EX));
-  bwDB  = JSON.parse(localStorage.getItem(bwKey())  || '{}');
+  db   = JSON.parse(localStorage.getItem(dbKey())  || '{}');
+  cfg  = JSON.parse(localStorage.getItem(cfgKey()) || JSON.stringify(DEFAULT_EX));
+  bwDB = JSON.parse(localStorage.getItem(bwKey())  || '{}');
 }
 loadProfileData();
 
-function sDB(){ localStorage.setItem(dbKey(),  JSON.stringify(db)); }
-function sCfg(){ localStorage.setItem(cfgKey(), JSON.stringify(cfg)); }
-function sBW(){ localStorage.setItem(bwKey(),  JSON.stringify(bwDB)); }
+function sDB(){  try{ localStorage.setItem(dbKey(),  JSON.stringify(db)); } catch(e){ showToast('Greška: nema mjesta u memoriji'); } }
+function sCfg(){ try{ localStorage.setItem(cfgKey(), JSON.stringify(cfg)); } catch(e){} }
+function sBW(){  try{ localStorage.setItem(bwKey(),  JSON.stringify(bwDB)); } catch(e){} }
 
-// ── PROFILE SWITCHER ──────────────────────────────────────────────────────
+// ── PROFILE SHEET ─────────────────────────────────────────────────────────
+let profileMode = 'list';
+let profileToDelete = null;
+
 function openProfileSheet(){
-  let h = '';
-  Object.entries(PROFILES).forEach(([key, p]) => {
-    const isActive = key === currentProfile;
-    h += `<div class="profile-item" onclick="switchProfile('${key}')">
-      <div class="profile-avatar${isActive?' active':''}">${p.initials}</div>
-      <span class="profile-name">${p.name}</span>
-      ${isActive ? '<span class="profile-check">✓</span>' : ''}
-    </div>`;
-  });
-  document.getElementById('profileList').innerHTML = h;
+  profileMode = 'list';
+  renderProfileSheet();
   openSheet('profileSheet');
 }
-function switchProfile(name){
-  if(name === currentProfile){ closeSheet('profileSheet'); return; }
-  currentProfile = name;
-  localStorage.setItem('gl_profile', name);
+
+function renderProfileSheet(){
+  const profiles = getProfiles();
+  const el = document.getElementById('profileSheetContent');
+  const titleEl = document.getElementById('profileSheetTitle');
+
+  if(profileMode === 'list'){
+    titleEl.textContent = 'Profili';
+    let h = '';
+    profiles.forEach(p => {
+      const isActive = p.id === currentProfileId;
+      h += `<div class="profile-item" onclick="switchProfileTo('${p.id}')">
+        <div class="profile-avatar${isActive?' active':''}">${p.initials}</div>
+        <span class="profile-name">${p.name}</span>
+        <div class="profile-item-right">
+          ${isActive ? '<span class="profile-check">✓</span>' : `<button class="profile-del-btn" onclick="event.stopPropagation();startDeleteProfile('${p.id}')">✕</button>`}
+        </div>
+      </div>`;
+    });
+    h += `<button class="profile-create-btn" onclick="profileMode='create';renderProfileSheet()">+ Novi profil</button>`;
+    el.innerHTML = h;
+
+  } else if(profileMode === 'create'){
+    titleEl.textContent = 'Novi profil';
+    el.innerHTML = `
+      <button class="profile-back-btn" onclick="profileMode='list';renderProfileSheet()">‹ Natrag</button>
+      <div class="profile-initials-preview" id="initialsPreview">??</div>
+      <div class="form-group">
+        <label class="form-lbl">Ime</label>
+        <input class="form-inp" id="newProfileName" placeholder="npr. Ante Matić" oninput="updateInitialsPreview()" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="form-lbl">Šifra (za brisanje profila)</label>
+        <input class="form-inp" id="newProfilePw" type="password" placeholder="Upiši šifru" autocomplete="new-password">
+      </div>
+      <button class="pri-btn" onclick="createNewProfile()">Kreiraj profil</button>`;
+
+  } else if(profileMode === 'delete'){
+    titleEl.textContent = 'Obriši profil';
+    const p = getProfiles().find(x => x.id === profileToDelete);
+    el.innerHTML = `
+      <button class="profile-back-btn" onclick="profileMode='list';renderProfileSheet()">‹ Natrag</button>
+      <div class="profile-delete-confirm">
+        <div class="profile-avatar" style="margin:0 auto 10px;width:54px;height:54px;font-size:15px">${p?.initials||'??'}</div>
+        <div class="profile-delete-name">${p?.name||''}</div>
+        <div class="profile-delete-warn">Trajno briše profil i sve podatke!</div>
+      </div>
+      <div class="form-group">
+        <label class="form-lbl">Upiši šifru za potvrdu</label>
+        <input class="form-inp" id="deletePwInput" type="password" placeholder="Šifra profila">
+      </div>
+      <button class="pri-btn" style="background:var(--red);color:#fff;border:none" onclick="confirmDeleteProfile()">Obriši profil</button>`;
+  }
+}
+
+function updateInitialsPreview(){
+  const name = document.getElementById('newProfileName')?.value || '';
+  const el = document.getElementById('initialsPreview');
+  if(el) el.textContent = name.trim() ? getInitials(name) : '??';
+}
+
+function createNewProfile(){
+  const name = document.getElementById('newProfileName')?.value.trim();
+  const pw   = document.getElementById('newProfilePw')?.value;
+  if(!name){ showToast('Upiši ime'); return; }
+  if(!pw){   showToast('Upiši šifru'); return; }
+  const newP = { id:'p_'+Date.now().toString(36), name, initials:getInitials(name), pw };
+  const list = getProfiles();
+  list.push(newP);
+  saveProfileList(list);
+  switchProfileTo(newP.id);
+  showToast('Profil kreiran ✓');
+}
+
+function startDeleteProfile(id){
+  profileToDelete = id;
+  profileMode = 'delete';
+  renderProfileSheet();
+}
+
+function confirmDeleteProfile(){
+  const pw = document.getElementById('deletePwInput')?.value;
+  const list = getProfiles();
+  const p = list.find(x => x.id === profileToDelete);
+  if(!p){ showToast('Profil nije pronađen'); return; }
+  if(p.pw !== pw){ showToast('Pogrešna šifra ✕'); return; }
+  // Delete all data
+  ['gl_db_','gl_cfg_','gl_bw_'].forEach(prefix => localStorage.removeItem(prefix + profileToDelete));
+  const newList = list.filter(x => x.id !== profileToDelete);
+  saveProfileList(newList);
+  // Switch to first remaining
+  if(newList.length > 0) switchProfileTo(newList[0].id);
+  closeSheet('profileSheet');
+  showToast('Profil obrisan');
+}
+
+function switchProfileTo(id){
+  if(id === currentProfileId){ closeSheet('profileSheet'); return; }
+  currentProfileId = id;
+  setCurrentId(id);
   loadProfileData();
-  const p = PROFILES[name];
-  document.getElementById('profileBtn').textContent = p.initials;
+  const p = getProfiles().find(x => x.id === id);
+  document.getElementById('profileBtn').textContent = p?.initials || '??';
   closeSheet('profileSheet');
   Object.values(chartInsts).forEach(ch => ch.destroy()); chartInsts = {};
   renderCal(); renderWeekStrip(); renderExercises(); updateBWPill();
   if(document.getElementById('vStats').style.display !== 'none') renderStats();
-  showToast('Profil: ' + p.name + ' ✓');
+  showToast('Profil: ' + (p?.name||id) + ' ✓');
 }
 function dkey(d){ return d.toISOString().split('T')[0]; }
 function todayDK(){ return dkey(new Date()); }
@@ -457,10 +612,19 @@ function dowI(d){ let i=d.getDay()-1; return i<0?6:i; }
 function dowK(d){ return DK[dowI(d)]; }
 function gid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,5); }
 
+// ── AUTO-SAVE ─────────────────────────────────────────────────────────────
+let autoSaveTimer = null;
+document.addEventListener('input', function(e){
+  if(e.target.classList.contains('inp')){
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(()=>{ saveWorkout(true); }, 1200);
+  }
+});
+
 // ── INIT ─────────────────────────────────────────────────────────────────
 (function(){
-  // Set correct profile initials on topbar
-  document.getElementById('profileBtn').textContent = PROFILES[currentProfile].initials;
+  const p = getProfiles().find(x => x.id === currentProfileId);
+  document.getElementById('profileBtn').textContent = p?.initials || '??';
   const n = new Date();
   calY = n.getFullYear(); calM = n.getMonth();
   selDate = n;
@@ -604,8 +768,8 @@ function toggleVijaca(idx){
   sDB(); renderCal(); renderWeekStrip();
 }
 
-function saveWorkout(){
-  const exs=cfg[dowK(selDate)]; if(!exs) return;
+function saveWorkout(silent){
+  const exs=cfg[dowK(selDate)]; if(!exs||!exs.length) return;
   const k=dkey(selDate); if(!db[k])db[k]={};
   const vr=db[k].vijaca_rounds;
   exs.forEach(ex=>{
@@ -619,7 +783,7 @@ function saveWorkout(){
   });
   if(vr!==undefined) db[k].vijaca_rounds=vr;
   sDB(); renderCal(); renderWeekStrip();
-  showToast('Trening spremljen ✓');
+  if(!silent) showToast('Trening spremljen ✓');
 }
 
 // ── BODY WEIGHT ───────────────────────────────────────────────────────────
