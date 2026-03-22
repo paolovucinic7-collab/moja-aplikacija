@@ -321,7 +321,8 @@ body.light .toast { background: #fff; }
 /* ── TIMER WIDGET ── */
 .timer-widget { position: absolute; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 8px); left: 50%; transform: translateX(-50%) translateY(16px); width: calc(100% - 36px); max-width: 394px; background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--r2); padding: 14px 16px 12px; z-index: 30; opacity: 0; pointer-events: none; transition: all 0.25s cubic-bezier(0.32,0.72,0,1); }
 .timer-widget.open { opacity: 1; pointer-events: all; transform: translateX(-50%) translateY(0); }
-.timer-num { font-family: var(--mono); font-size: 44px; font-weight: 500; color: var(--text); text-align: center; letter-spacing: 0.04em; line-height: 1; margin: 4px 0 10px; transition: color 0.3s; }
+.timer-num { font-family: var(--mono); font-size: 44px; font-weight: 500; color: var(--text); text-align: center; letter-spacing: 0.04em; line-height: 1; margin: 4px 0 10px; transition: color 0.3s; width: 100%; background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; outline: none; cursor: text; display: block; padding: 0; -moz-appearance: textfield; }
+.timer-num:focus { border-bottom-color: var(--border2); }
 .timer-num.done { color: var(--green); }
 .timer-bar { height: 3px; background: var(--bg4); border-radius: 2px; margin-bottom: 12px; overflow: hidden; }
 .timer-bar-fill { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.95s linear; }
@@ -434,7 +435,12 @@ body.light .toast { background: #fff; }
 
   <!-- TIMER WIDGET -->
   <div class="timer-widget" id="timerWidget">
-    <div class="timer-num" id="timerNum">1:30</div>
+    <input class="timer-num" id="timerNum" type="text" value="1:30"
+      inputmode="decimal" autocomplete="off" spellcheck="false"
+      placeholder="1:30"
+      onclick="this.select()"
+      onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
+      onblur="parseTimerInput(this.value)">
     <div class="timer-bar"><div class="timer-bar-fill" id="timerBarFill" style="width:100%"></div></div>
     <div class="timer-controls">
       <button class="tcb" onclick="adjustTimer(-30)">-30s</button>
@@ -1400,7 +1406,7 @@ function toggleTheme(){
 
 // ── QUOTES ────────────────────────────────────────────────────────────────
 const QUOTES = [
-  {t:"The only bad workout is the one that didn't happen.",a:"Unknown"},
+  {t:"The only bad workout is the one that didn't happen.",a:"Joe Cirulli"},
   {t:"Train hard, turn up, run your best and the rest will take care of itself.",a:"Usain Bolt"},
   {t:"The last three or four reps is what makes the muscle grow.",a:"Arnold Schwarzenegger"},
   {t:"Success usually comes to those who are too busy to be looking for it.",a:"Henry David Thoreau"},
@@ -1438,12 +1444,12 @@ const QUOTES = [
   {t:"Strive for progress, not perfection.",a:"Unknown"},
   {t:"If it doesn't challenge you, it doesn't change you.",a:"Fred DeVito"},
   {t:"Each workout is a step closer to your goal.",a:"Unknown"},
-  {t:"You are one workout away from a good mood.",a:"Unknown"},
+  {t:"You are one workout away from a good mood.",a:"Caroline Jordan"},
   {t:"Hustle for the muscle.",a:"Unknown"},
   {t:"Respect your body — it's the only one you've got.",a:"Unknown"},
   {t:"What seems impossible today will one day become your warm-up.",a:"Unknown"},
   {t:"Sweat is fat crying.",a:"Unknown"},
-  {t:"Train insane or remain the same.",a:"Unknown"},
+  {t:"Train insane or remain the same.",a:"Jillian Michaels"},
   {t:"Fall in love with taking care of your body.",a:"Unknown"},
   {t:"When you feel like quitting, think about why you started.",a:"Unknown"},
   {t:"Believe you can and you're halfway there.",a:"Theodore Roosevelt"},
@@ -1457,7 +1463,7 @@ const QUOTES = [
   {t:"The secret of getting ahead is getting started.",a:"Mark Twain"},
   {t:"It always seems impossible until it's done.",a:"Nelson Mandela"},
   {t:"Don't count the days, make the days count.",a:"Muhammad Ali"},
-  {t:"The body achieves what the mind believes.",a:"Unknown"},
+  {t:"The body achieves what the mind believes.",a:"Napoleon Hill"},
   {t:"When life gets harder, challenge yourself to be stronger.",a:"Unknown"},
   {t:"Discipline is choosing between what you want now and what you want most.",a:"Abraham Lincoln"},
   {t:"A champion is defined not by their wins but by how they recover when they fall.",a:"Serena Williams"},
@@ -1567,7 +1573,7 @@ const QUOTES = [
   {t:"The mind is everything. What you think, you become.",a:"Buddha"},
   {t:"You are braver than you believe, stronger than you seem, and smarter than you think.",a:"A.A. Milne"},
   {t:"The body does not want you to do this. As you run, it tells you to stop but the mind must be strong.",a:"Bill Parcells"},
-  {t:"Obsessed is a word the lazy use to describe the dedicated.",a:"Unknown"},
+  {t:"Obsessed is a word the lazy use to describe the dedicated.",a:"Russell Warren"},
   {t:"Great bodies are built one rep at a time.",a:"Unknown"},
   {t:"Your health is your wealth.",a:"Unknown"},
   {t:"Commit. Don't quit.",a:"Unknown"},
@@ -1611,7 +1617,7 @@ const QUOTES = [
   {t:"Every rep of every set is bringing you closer.",a:"Unknown"},
   {t:"You can have results or excuses. Not both.",a:"Arnold Schwarzenegger"},
   {t:"Becoming is better than being.",a:"Carol Dweck"},
-  {t:"Once you see results, it becomes an addiction.",a:"Unknown"},
+  {t:"Once you see results, it becomes an addiction.",a:"Arnold Schwarzenegger"},
   {t:"Be the best version of yourself.",a:"Unknown"},
   {t:"Ordinary people with extraordinary ambitions achieve extraordinary things.",a:"Unknown"},
   {t:"Nobody who ever gave his best regretted it.",a:"George Halas"},
@@ -1728,7 +1734,18 @@ function startTimer(){
       clearInterval(timerIv); timerRunning=false;
       document.getElementById('timerPlayBtn').textContent='▶';
       document.getElementById('timerNum').classList.add('done');
+      // Vibration (Android) + AudioContext beep (iOS fallback)
       if(navigator.vibrate) navigator.vibrate([300,100,300,100,300]);
+      try{
+        const ac=new(window.AudioContext||window.webkitAudioContext)();
+        [0,0.35,0.7].forEach(t=>{
+          const o=ac.createOscillator(),g=ac.createGain();
+          o.connect(g); g.connect(ac.destination);
+          o.frequency.value=880; g.gain.setValueAtTime(0.3,ac.currentTime+t);
+          g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+t+0.28);
+          o.start(ac.currentTime+t); o.stop(ac.currentTime+t+0.3);
+        });
+      }catch(e){}
       showToast('Odmor gotov! ✓');
     }
   },1000);
@@ -1761,9 +1778,30 @@ function setTimerPreset(secs){
 function updateTimerDisplay(){
   const numEl=document.getElementById('timerNum');
   const barEl=document.getElementById('timerBarFill');
-  if(numEl) numEl.textContent=fmtSecs(timerRem);
+  // Don't overwrite if user is actively editing
+  if(numEl && document.activeElement!==numEl) numEl.value=fmtSecs(timerRem);
   const pct=timerTotal>0?(timerRem/timerTotal*100):0;
   if(barEl) barEl.style.width=pct+'%';
+}
+function parseTimerInput(raw){
+  let val=(raw||'').trim().replace(',','.');
+  let secs=0;
+  if(/[:\.]/.test(val)){
+    const parts=val.split(/[:\.]/);
+    const m=parseInt(parts[0])||0;
+    const s=parseInt(parts[1])||0;
+    secs=m*60+s;
+  } else {
+    const n=parseInt(val)||0;
+    // Numbers ≤59 are treated as plain seconds; larger numbers also as seconds
+    secs=n;
+  }
+  secs=Math.max(5,Math.min(5999,secs));
+  if(timerRunning) pauseTimer();
+  timerDur=secs; timerRem=secs; timerTotal=secs;
+  document.getElementById('timerNum').classList.remove('done');
+  document.querySelectorAll('.tpre').forEach(b=>b.classList.remove('active-pre'));
+  updateTimerDisplay();
 }
 function startRestTimer(dayKey){
   const t=getDayTimer(dayKey||editDayKey||dowK(selDate));
