@@ -272,6 +272,9 @@ body { height: 100%; background: var(--bg); color: var(--text); font-family: var
 .ex-item-meta { font-family: var(--mono); font-size: 9px; color: var(--text3); flex-shrink: 0; }
 .ex-del { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 13px; padding: 2px 4px; border-radius: 4px; transition: color 0.12s; flex-shrink: 0; }
 .ex-del:hover { color: var(--red); }
+.ex-edit { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 4px; transition: color 0.12s; flex-shrink: 0; }
+.ex-edit:hover { color: var(--accent); }
+.ex-item.editing { border-color: var(--accent); background: var(--bg2); }
 .sheet-divider { height: 1px; background: var(--border); margin: 14px 0; }
 .sheet-sub-title { font-family: var(--mono); font-size: 9px; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px; }
 
@@ -1150,49 +1153,57 @@ function renderBWHistory(){
 
 // ── EDIT SHEET ────────────────────────────────────────────────────────────
 let editDayKey=null;
+let editingExIdx=null;
 function openEditSheet(){
   editDayKey=dowK(selDate);
+  editingExIdx=null;
   renderEditBody();
   openSheet('editSheet');
 }
 function renderEditBody(){
   const di=DK.indexOf(editDayKey);
   const exs=cfg[editDayKey]||[];
+  const editEx=editingExIdx!==null ? exs[editingExIdx] : null;
   let h='';
   // Day tabs
-  h+=`<div class="day-tabs">${DK.map((k,i)=>`<button class="dtab${k===editDayKey?' active':''}" onclick="editDayKey='${k}';renderEditBody()">${DL[i]}</button>`).join('')}</div>`;
+  h+=`<div class="day-tabs">${DK.map((k,i)=>`<button class="dtab${k===editDayKey?' active':''}" onclick="editDayKey='${k}';editingExIdx=null;renderEditBody()">${DL[i]}</button>`).join('')}</div>`;
   // Current exercises
   if(exs.length){
     h+=`<div class="sheet-sub-title">Trenutne vježbe — ${DF[di]}</div>`;
     exs.forEach((ex,idx)=>{
       const fmt={reps:'Serije',time:'Izdržaj',dual:'L/D',vijaca:'Kardio'}[ex.format]||ex.format;
-      h+=`<div class="ex-item"><span class="ex-item-name">${ex.name}</span><span class="ex-item-meta">${fmt}${ex.sets?' · '+ex.sets+'×':''}</span><button class="ex-del" onclick="delEx('${editDayKey}',${idx})">✕</button></div>`;
+      const isEditing=editingExIdx===idx;
+      h+=`<div class="ex-item${isEditing?' editing':''}"><span class="ex-item-name">${ex.name}</span><span class="ex-item-meta">${fmt}${ex.sets?' · '+ex.sets+'×':''}</span><button class="ex-edit" onclick="startEditEx('${editDayKey}',${idx})" title="Uredi">✎</button><button class="ex-del" onclick="delEx('${editDayKey}',${idx})" title="Obriši">✕</button></div>`;
     });
   } else {
     h+=`<div style="font-family:var(--mono);font-size:9px;color:var(--text3);text-align:center;padding:16px 0;letter-spacing:0.07em;text-transform:uppercase">Nema vježbi za ovaj dan</div>`;
   }
-  // Add form
-  h+=`<div class="sheet-divider"></div><div class="sheet-sub-title">Dodaj vježbu</div>
-  <div class="form-group"><label class="form-lbl">Naziv</label><input class="form-inp" id="neName" placeholder="npr. Bench press"></div>
+  // Add/Edit form
+  const formTitle=editEx ? 'Uredi vježbu' : 'Dodaj vježbu';
+  const setsVal=editEx ? (editEx.sets||3) : 3;
+  const isVijaca=editEx ? editEx.format==='vijaca' : false;
+  h+=`<div class="sheet-divider"></div><div class="sheet-sub-title">${formTitle}</div>
+  <div class="form-group"><label class="form-lbl">Naziv</label><input class="form-inp" id="neName" placeholder="npr. Bench press" value="${editEx ? editEx.name.replace(/"/g,'&quot;') : ''}"></div>
   <div class="form-grid-2" style="margin-bottom:10px">
     <div><label class="form-lbl">Format</label>
       <select class="form-select" id="neFmt" onchange="toggleSetsVis()">
-        <option value="reps">Serije (ponav.)</option>
-        <option value="dual">Serije (L/D)</option>
-        <option value="time">Izdržaj (sek.)</option>
-        <option value="vijaca">Vijača / Kardio</option>
+        <option value="reps"${!editEx||editEx.format==='reps'?' selected':''}>Serije (ponav.)</option>
+        <option value="dual"${editEx&&editEx.format==='dual'?' selected':''}>Serije (L/D)</option>
+        <option value="time"${editEx&&editEx.format==='time'?' selected':''}>Izdržaj (sek.)</option>
+        <option value="vijaca"${editEx&&editEx.format==='vijaca'?' selected':''}>Vijača / Kardio</option>
       </select>
     </div>
-    <div id="neSetsWrap"><label class="form-lbl">Serija</label><input class="form-inp" id="neSets" type="number" value="3" min="1" max="10"></div>
+    <div id="neSetsWrap" style="opacity:${isVijaca?'0.3':'1'}"><label class="form-lbl">Serija</label><input class="form-inp" id="neSets" type="number" value="${setsVal}" min="1" max="10"></div>
   </div>
-  <div id="neSsWrap" style="margin-bottom:10px">
+  <div id="neSsWrap" style="margin-bottom:10px;${isVijaca?'display:none':''}">
     <label class="form-lbl">Super set s</label>
     <select class="form-select" id="neSs">
       <option value="">— Nije super set —</option>
-      ${exs.map(e=>`<option value="${e.id}">${e.name}</option>`).join('')}
+      ${exs.filter((_,i)=>i!==editingExIdx).map(e=>`<option value="${e.id}"${editEx&&editEx.ss===e.id?' selected':''}>${e.name}</option>`).join('')}
     </select>
   </div>
-  <button class="pri-btn" onclick="addEx()">+ Dodaj vježbu</button>`;
+  <button class="pri-btn" onclick="addEx()">${editEx ? '💾 Spremi izmjene' : '+ Dodaj vježbu'}</button>
+  ${editEx ? `<button class="sec-btn" onclick="cancelEditEx()">Odustani</button>` : ''}`;
 
   // Timer settings for this day
   const t=getDayTimer(editDayKey);
@@ -1217,8 +1228,23 @@ function toggleSetsVis(){
 }
 function delEx(dayKey,idx){
   if(!cfg[dayKey]) return;
+  if(editingExIdx===idx) editingExIdx=null;
+  else if(editingExIdx!==null && editingExIdx>idx) editingExIdx--;
   cfg[dayKey].splice(idx,1); sCfg();
   renderEditBody(); renderExercises();
+}
+function startEditEx(dayKey,idx){
+  editDayKey=dayKey;
+  editingExIdx=idx;
+  renderEditBody();
+  setTimeout(()=>{
+    const el=document.getElementById('neName');
+    if(el){el.focus();el.scrollIntoView({behavior:'smooth',block:'center'});}
+  },50);
+}
+function cancelEditEx(){
+  editingExIdx=null;
+  renderEditBody();
 }
 function addEx(){
   const name=document.getElementById('neName').value.trim();
@@ -1226,14 +1252,28 @@ function addEx(){
   const fmt=document.getElementById('neFmt').value;
   const sets=parseInt(document.getElementById('neSets')?.value)||3;
   const ss=document.getElementById('neSs')?.value||'';
-  const ex={id:gid(),name,format:fmt};
-  if(fmt!=='vijaca') ex.sets=sets;
-  if(fmt==='vijaca'){ex.rounds=5;ex.work=45;ex.rest=15;}
-  if(ss) ex.ss=ss;
   if(!cfg[editDayKey]) cfg[editDayKey]=[];
-  cfg[editDayKey].push(ex); sCfg();
-  renderEditBody(); renderExercises();
-  showToast('Vježba dodana ✓');
+  if(editingExIdx!==null){
+    // Edit mode — ažuriraj postojeću vježbu
+    const ex=cfg[editDayKey][editingExIdx];
+    ex.name=name; ex.format=fmt;
+    if(fmt!=='vijaca') ex.sets=sets; else delete ex.sets;
+    if(fmt==='vijaca' && !ex.rounds){ex.rounds=5;ex.work=45;ex.rest=15;}
+    if(ss) ex.ss=ss; else delete ex.ss;
+    cfg[editDayKey][editingExIdx]=ex;
+    editingExIdx=null;
+    sCfg(); renderEditBody(); renderExercises();
+    showToast('Vježba ažurirana ✓');
+  } else {
+    // Add mode — dodaj novu vježbu
+    const ex={id:gid(),name,format:fmt};
+    if(fmt!=='vijaca') ex.sets=sets;
+    if(fmt==='vijaca'){ex.rounds=5;ex.work=45;ex.rest=15;}
+    if(ss) ex.ss=ss;
+    cfg[editDayKey].push(ex); sCfg();
+    renderEditBody(); renderExercises();
+    showToast('Vježba dodana ✓');
+  }
 }
 
 // ── STATS ─────────────────────────────────────────────────────────────────
